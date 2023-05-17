@@ -1,4 +1,6 @@
 
+SELECT @last_date;
+
 DELIMITER //
 CREATE PROCEDURE user_update()
 BEGIN
@@ -85,15 +87,17 @@ FROM temp_p_forex_pairs;
 
 SET @last_date = (SELECT date
 FROM 
--- Here we get started in looking up the las available date
+-- Here we get started in looking up the last available date
 (SELECT date, count(instrument) prices_available 
 FROM (SELECT date, close, isin instrument
 	FROM asset_prices 
-    WHERE isin IN (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name)
-	UNION
+    WHERE close IS NOT NULL
+    AND isin IN (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name)
+    UNION
 	SELECT date, close, forex_pair
 	FROM forex_prices
-    WHERE forex_pair IN (SELECT forex_pair FROM temp_p_forex_pairs)) instruments
+    WHERE close IS NOT NULL
+    AND forex_pair IN (SELECT forex_pair FROM temp_p_forex_pairs)) instruments
 GROUP BY date
 -- Here we want to make sure the number of assets with that date is the total number of relavant assets (all assets have prices uploaded)
 HAVING prices_available = (SELECT SUM(num_assets + num_forex_pairs) total_instr
@@ -246,7 +250,13 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
 	tot_change FLOAT DEFAULT 0,
 	acc_balance FLOAT DEFAULT 0,
     tot_balance FLOAT DEFAULT 0,
-    leverage_rate FLOAT
+    leverage_rate FLOAT,
+    
+    tot_balance_change_d FLOAT,
+	tot_balance_change_w FLOAT,
+	tot_balance_change_m FLOAT,
+	tot_balance_change_q FLOAT,
+	tot_balance_change_y FLOAT
 );
 
 -- STEP 1 -> INTRODUCING CALENDAR DATES
@@ -341,7 +351,7 @@ BEGIN
 DECLARE counter INT DEFAULT 2; -- SETTING THE INICIAL COUNTER TO TWO BECAUSE THERE WILL BE ONE DATE IN THE TABLE ALREADY
 DECLARE loop_date DATE DEFAULT ADDDATE(@first_date, 1);
 
-WHILE counter <= (SELECT datediff(@last_date, @first_date)) DO
+WHILE counter <= (SELECT datediff(@last_date, @first_date)+1) DO
 		
 UPDATE sim_looper t1
 JOIN (
@@ -446,8 +456,6 @@ eur_exposure		= IF(@a1_currency = 'EUR', a1_local_value, 0)
                     + IF(@a4_currency = 'EUR', a4_local_value, 0); 
 
 
-
-
 UPDATE sim_looper t1 
 JOIN (SELECT 
 date, 
@@ -501,16 +509,24 @@ LAG(a4_portfolio_price,1) OVER (ORDER BY date) AS a4_prev_portfolio_price_1d, --
 LAG(a4_portfolio_price,7) OVER (ORDER BY date) AS a4_prev_portfolio_price_7d,
 LAG(a4_portfolio_price,30) OVER (ORDER BY date) AS a4_prev_portfolio_price_30d,
 LAG(a4_portfolio_price,90) OVER (ORDER BY date) AS a4_prev_portfolio_price_90d,
-LAG(a4_portfolio_price,365) OVER (ORDER BY date) AS a4_prev_portfolio_price_365d
+LAG(a4_portfolio_price,365) OVER (ORDER BY date) AS a4_prev_portfolio_price_365d,
+
+tot_balance,
+LAG(tot_balance,1) OVER (ORDER BY date) AS prev_tot_balance_1d, -- a4-normal lag 1 day 
+LAG(tot_balance,7) OVER (ORDER BY date) AS prev_tot_balance_7d,
+LAG(tot_balance,30) OVER (ORDER BY date) AS prev_tot_balance_30d,
+LAG(tot_balance,90) OVER (ORDER BY date) AS prev_tot_balance_90d,
+LAG(tot_balance,365) OVER (ORDER BY date) AS prev_tot_balance_365d
+
 
 FROM sim_looper) t2
 ON t1.date = t2.date
 SET 
 t1.a1_local_change_d 	= ((t1.a1_price - t2.a1_prev_price_1d) / t2.a1_prev_price_1d) * 100,
 t1.a1_local_change_w 	= ((t1.a1_price - t2.a1_prev_price_7d) / t2.a1_prev_price_7d) * 100,
-t1.a1_local_change_m 	= ((t1.a1_price - t2.a1_prev_price_7d) / t2.a1_prev_price_30d) * 100,
-t1.a1_local_change_q 	= ((t1.a1_price - t2.a1_prev_price_7d) / t2.a1_prev_price_90d) * 100,
-t1.a1_local_change_y 	= ((t1.a1_price - t2.a1_prev_price_7d) / t2.a1_prev_price_365d) * 100,
+t1.a1_local_change_m 	= ((t1.a1_price - t2.a1_prev_price_30d) / t2.a1_prev_price_30d) * 100,
+t1.a1_local_change_q 	= ((t1.a1_price - t2.a1_prev_price_90d) / t2.a1_prev_price_90d) * 100,
+t1.a1_local_change_y 	= ((t1.a1_price - t2.a1_prev_price_365d) / t2.a1_prev_price_365d) * 100,
 a1_portfolio_change_d 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_1d) / t2.a1_prev_portfolio_price_1d) * 100,
 a1_portfolio_change_w 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_7d) / t2.a1_prev_portfolio_price_7d) * 100,
 a1_portfolio_change_m 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_30d) / t2.a1_prev_portfolio_price_30d) * 100,
@@ -519,9 +535,9 @@ a1_portfolio_change_y 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_36
 
 t1.a2_local_change_d 	= ((t1.a2_price - t2.a2_prev_price_1d) / t2.a2_prev_price_1d) * 100,
 t1.a2_local_change_w 	= ((t1.a2_price - t2.a2_prev_price_7d) / t2.a2_prev_price_7d) * 100,
-t1.a2_local_change_m 	= ((t1.a2_price - t2.a2_prev_price_7d) / t2.a2_prev_price_30d) * 100,
-t1.a2_local_change_q 	= ((t1.a2_price - t2.a2_prev_price_7d) / t2.a2_prev_price_90d) * 100,
-t1.a2_local_change_y 	= ((t1.a2_price - t2.a2_prev_price_7d) / t2.a2_prev_price_365d) * 100,
+t1.a2_local_change_m 	= ((t1.a2_price - t2.a2_prev_price_30d) / t2.a2_prev_price_30d) * 100,
+t1.a2_local_change_q 	= ((t1.a2_price - t2.a2_prev_price_90d) / t2.a2_prev_price_90d) * 100,
+t1.a2_local_change_y 	= ((t1.a2_price - t2.a2_prev_price_365d) / t2.a2_prev_price_365d) * 100,
 a2_portfolio_change_d 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_1d) / t2.a2_prev_portfolio_price_1d) * 100,
 a2_portfolio_change_w 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_7d) / t2.a2_prev_portfolio_price_7d) * 100,
 a2_portfolio_change_m 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_30d) / t2.a2_prev_portfolio_price_30d) * 100,
@@ -530,9 +546,9 @@ a2_portfolio_change_y 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_36
 
 t1.a3_local_change_d 	= ((t1.a3_price - t2.a3_prev_price_1d) / t2.a3_prev_price_1d) * 100,
 t1.a3_local_change_w 	= ((t1.a3_price - t2.a3_prev_price_7d) / t2.a3_prev_price_7d) * 100,
-t1.a3_local_change_m 	= ((t1.a3_price - t2.a3_prev_price_7d) / t2.a3_prev_price_30d) * 100,
-t1.a3_local_change_q 	= ((t1.a3_price - t2.a3_prev_price_7d) / t2.a3_prev_price_90d) * 100,
-t1.a3_local_change_y 	= ((t1.a3_price - t2.a3_prev_price_7d) / t2.a3_prev_price_365d) * 100,
+t1.a3_local_change_m 	= ((t1.a3_price - t2.a3_prev_price_30d) / t2.a3_prev_price_30d) * 100,
+t1.a3_local_change_q 	= ((t1.a3_price - t2.a3_prev_price_90d) / t2.a3_prev_price_90d) * 100,
+t1.a3_local_change_y 	= ((t1.a3_price - t2.a3_prev_price_365d) / t2.a3_prev_price_365d) * 100,
 a3_portfolio_change_d 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_1d) / t2.a3_prev_portfolio_price_1d) * 100,
 a3_portfolio_change_w 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_7d) / t2.a3_prev_portfolio_price_7d) * 100,
 a3_portfolio_change_m 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_30d) / t2.a3_prev_portfolio_price_30d) * 100,
@@ -541,14 +557,20 @@ a3_portfolio_change_y 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_36
 
 t1.a4_local_change_d 	= ((t1.a4_price - t2.a4_prev_price_1d) / t2.a4_prev_price_1d) * 100,
 t1.a4_local_change_w 	= ((t1.a4_price - t2.a4_prev_price_7d) / t2.a4_prev_price_7d) * 100,
-t1.a4_local_change_m 	= ((t1.a4_price - t2.a4_prev_price_7d) / t2.a4_prev_price_30d) * 100,
-t1.a4_local_change_q 	= ((t1.a4_price - t2.a4_prev_price_7d) / t2.a4_prev_price_90d) * 100,
-t1.a4_local_change_y 	= ((t1.a4_price - t2.a4_prev_price_7d) / t2.a4_prev_price_365d) * 100,
+t1.a4_local_change_m 	= ((t1.a4_price - t2.a4_prev_price_30d) / t2.a4_prev_price_30d) * 100,
+t1.a4_local_change_q 	= ((t1.a4_price - t2.a4_prev_price_90d) / t2.a4_prev_price_90d) * 100,
+t1.a4_local_change_y 	= ((t1.a4_price - t2.a4_prev_price_365d) / t2.a4_prev_price_365d) * 100,
 a4_portfolio_change_d 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_1d) / t2.a4_prev_portfolio_price_1d) * 100,
 a4_portfolio_change_w 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_7d) / t2.a4_prev_portfolio_price_7d) * 100,
 a4_portfolio_change_m 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_30d) / t2.a4_prev_portfolio_price_30d) * 100,
 a4_portfolio_change_q 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_90d) / t2.a4_prev_portfolio_price_90d) * 100,
-a4_portfolio_change_y 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_365d) / t2.a4_prev_portfolio_price_365d) * 100;
+a4_portfolio_change_y 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_365d) / t2.a4_prev_portfolio_price_365d) * 100,
+
+t1.tot_balance_change_d 	= ((t1.tot_balance - t2.prev_tot_balance_1d) / t2.prev_tot_balance_1d) * 100,
+t1.tot_balance_change_w 	= ((t1.tot_balance - t2.prev_tot_balance_7d) / t2.prev_tot_balance_7d) * 100,
+t1.tot_balance_change_m 	= ((t1.tot_balance - t2.prev_tot_balance_30d) / t2.prev_tot_balance_30d) * 100,
+t1.tot_balance_change_q 	= ((t1.tot_balance - t2.prev_tot_balance_90d) / t2.prev_tot_balance_90d) * 100,
+t1.tot_balance_change_y 	= ((t1.tot_balance - t2.prev_tot_balance_365d) / t2.prev_tot_balance_365d) * 100;
 
 SELECT* 
 FROM sim_looper;
@@ -556,20 +578,22 @@ FROM sim_looper;
 END //
 ;
 
+
 DELIMETER //
-CREATE PROCEDURE sim_ save()
+CREATE PROCEDURE sim_save()
 BEGIN
 
 DELETE
 FROM sim_data
 WHERE p_name = @p_name;
 
-INSERT INTO sim_data (date, p_name, a1_isin, a1_price, a1_forex_pair, a1_fx_rate, a1_portfolio_price, a1_amount, a1_medium_price, a1_local_value, a1_portfolio_value, a1_local_change_d, a1_local_change_w, a1_local_change_m, a1_local_change_q, a1_local_change_y, a1_portfolio_change_d, a1_portfolio_change_w, a1_portfolio_change_m, a1_portfolio_change_q, a1_portfolio_change_y, a2_isin, a2_price, a2_forex_pair, a2_fx_rate, a2_portfolio_price, a2_amount, a2_medium_price, a2_local_value, a2_portfolio_value, a2_local_change_d, a2_local_change_w, a2_local_change_m, a2_local_change_q, a2_local_change_y, a2_portfolio_change_d, a2_portfolio_change_w, a2_portfolio_change_m, a2_portfolio_change_q, a2_portfolio_change_y, a3_isin, a3_price, a3_forex_pair, a3_fx_rate, a3_portfolio_price, a3_amount, a3_medium_price, a3_local_value, a3_portfolio_value, a3_local_change_d, a3_local_change_w, a3_local_change_m, a3_local_change_q, a3_local_change_y, a3_portfolio_change_d, a3_portfolio_change_w, a3_portfolio_change_m, a3_portfolio_change_q, a3_portfolio_change_y, a4_isin, a4_price, a4_forex_pair, a4_fx_rate, a4_portfolio_price, a4_amount, a4_medium_price, a4_local_value, a4_portfolio_value, a4_local_change_d, a4_local_change_w, a4_local_change_m, a4_local_change_q, a4_local_change_y, a4_portfolio_change_d, a4_portfolio_change_w, a4_portfolio_change_m, a4_portfolio_change_q, a4_portfolio_change_y, p_value, a1_allocation, a2_allocation, a3_allocation, a4_allocation, usd_exposure_usd, usd_exposure_eur, eur_exposure, buy, sell, deposit, withdrawl, tot_change, acc_balance, tot_balance, leverage_rate)
+INSERT INTO sim_data (date, p_name, a1_isin, a1_price, a1_forex_pair, a1_fx_rate, a1_portfolio_price, a1_amount, a1_medium_price, a1_local_value, a1_portfolio_value, a1_local_change_d, a1_local_change_w, a1_local_change_m, a1_local_change_q, a1_local_change_y, a1_portfolio_change_d, a1_portfolio_change_w, a1_portfolio_change_m, a1_portfolio_change_q, a1_portfolio_change_y, a2_isin, a2_price, a2_forex_pair, a2_fx_rate, a2_portfolio_price, a2_amount, a2_medium_price, a2_local_value, a2_portfolio_value, a2_local_change_d, a2_local_change_w, a2_local_change_m, a2_local_change_q, a2_local_change_y, a2_portfolio_change_d, a2_portfolio_change_w, a2_portfolio_change_m, a2_portfolio_change_q, a2_portfolio_change_y, a3_isin, a3_price, a3_forex_pair, a3_fx_rate, a3_portfolio_price, a3_amount, a3_medium_price, a3_local_value, a3_portfolio_value, a3_local_change_d, a3_local_change_w, a3_local_change_m, a3_local_change_q, a3_local_change_y, a3_portfolio_change_d, a3_portfolio_change_w, a3_portfolio_change_m, a3_portfolio_change_q, a3_portfolio_change_y, a4_isin, a4_price, a4_forex_pair, a4_fx_rate, a4_portfolio_price, a4_amount, a4_medium_price, a4_local_value, a4_portfolio_value, a4_local_change_d, a4_local_change_w, a4_local_change_m, a4_local_change_q, a4_local_change_y, a4_portfolio_change_d, a4_portfolio_change_w, a4_portfolio_change_m, a4_portfolio_change_q, a4_portfolio_change_y, p_value, a1_allocation, a2_allocation, a3_allocation, a4_allocation, usd_exposure_usd, usd_exposure_eur, eur_exposure, buy, sell, deposit, withdrawl, tot_change, acc_balance, tot_balance, leverage_rate, tot_balance_change_d, tot_balance_change_w, tot_balance_change_m, tot_balance_change_q, tot_balance_change_y)
 SELECT* FROM sim_looper;
 
 
 END //
 ;
+
 
 DELIMETER //
 CREATE PROCEDURE run_simulation()

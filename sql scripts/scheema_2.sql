@@ -11,7 +11,9 @@ VALUES
 ('Stock'), 
 ('Mutual fund'), 
 ('Bond'), 
-('REIT');
+('REIT'),
+('Index');
+
 
 -- 		CREATING THE ASSET CLASS TABLE
 
@@ -26,7 +28,8 @@ VALUES
 ('Commodity'),
 ('Gold'),
 ('Currency'),
-('Crypto asset');
+('Crypto asset'),
+('Index');
 
 
 -- 		CREATING THE CURRENCY TABLE
