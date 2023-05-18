@@ -31,6 +31,9 @@ VALUES
 ('Crypto asset'),
 ('Index');
 
+SELECT*
+FROM asset_class;
+
 
 -- 		CREATING THE CURRENCY TABLE
 -- 		Table will be populated will fairly complete global currency data

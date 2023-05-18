@@ -1,18 +1,23 @@
 DESC asset;
 
-
 -- THIS PROCEDURE WILL WORK FOR DATA IMPORTS FROM YAHOO FINANCE
--- THE IMPORTED CSV TABLE NEEDS TO BE NAMED asset_import_data
+-- THE IMPORTED CSV TABLE NEEDS TO BE NAMED data_import
 
-SET @import_isin 	= 'LU0378818131';
-SET @import_ticker	= 'DBZB.DE';
+SET @import_isin 	= 'SP500';
+SET @import_ticker	= 'SPX';
 SET @data_provider 	= 'Yahoo Finance';
  
  -- MISSING PART: THE INFORMATION ABOUT THE ASSET IN THE ASSET TABLE!!!
--- INSERT INTO asset (isin, asset_name, ticker, asset_vehicle, asset_class, inception_date, currency)
--- VALUES (@import_isin, 'Global Government Bond UCITS ETF 1C EUR Hedged', @import_ticker, 'ETP', 'Bond', (SELECT min(date) FROM asset_prices WHERE isin = @import_isin GROUP BY date LIMIT 1), 'EUR');
+INSERT INTO asset (isin, asset_name, ticker, asset_vehicle, asset_class, inception_date, currency)
+VALUES (@import_isin, 'S&P 500 INDEX', @import_ticker, 'Index', 'Index', (SELECT min(date) FROM asset_prices WHERE isin = @import_isin GROUP BY date LIMIT 1), 'USD');
 
 CALL asset_data_import(@import_isin, @import_ticker, @data_provider);
+
+DROP PROCEDURE asset_data_import;
+
+DELETE 
+FROM asset_prices
+WHERE ISIN = 'SP500';
 
 DELIMITER //
 CREATE PROCEDURE asset_data_import(
@@ -55,13 +60,16 @@ data_provider 	= data_provider,
 ticker 			= import_ticker;
 
 INSERT INTO asset_prices 
-SELECT date, isin, ticker, data_provider, open, high, low, close, last_close, adj_close, volume
+SELECT date, isin, ticker, data_provider, open, high, low, close, last_close, adj_close, volume, mid
 FROM asset_table;
 
 DROP TABLE asset_table;
+DROP TABLE data_import;
 
 SELECT*
 FROM asset_prices
 WHERE isin = import_isin;
 
 END //
+
+DROP TABLE data_import;

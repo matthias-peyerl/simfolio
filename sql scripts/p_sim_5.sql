@@ -1,5 +1,5 @@
 -- SETTING UP USER DEFINED INPUT OPTIONS
-SET @p_name = 'PT1';
+SET @p_name = 'PT2';
 SET @username = 'MATT';
 SET @inicial_balance = 100000;
 SET @strategy = '150:0';
