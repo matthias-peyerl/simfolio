@@ -28,6 +28,7 @@ SET
 @p_lev_rebalancing = (SELECT lev_rebalancing FROM strategies WHERE strategy_name = @strategy),
 @p_min_rebalancing = (SELECT min_rebalancing FROM strategies WHERE strategy_name = @strategy),
 @p_rel_rebalancing = (SELECT rel_rebalancing FROM strategies WHERE strategy_name = @strategy),
+@p_transaction_cost = (SELECT p_transaction_cost FROM portfolio WHERE p_name = @p_name),
 @asset_1 = (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name ORDER BY isin LIMIT 1 OFFSET 0), 
 @asset_2 = (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name ORDER BY isin LIMIT 1 OFFSET 1),
 @asset_3 = (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name ORDER BY isin LIMIT 1 OFFSET 2),
@@ -149,6 +150,7 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     a1_portfolio_price FLOAT,
     
     a1_amount INT,
+    a1_amount_change INT,
     a1_medium_price FLOAT,
     a1_local_value FLOAT,
     a1_portfolio_value FLOAT,
@@ -171,6 +173,7 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     a2_portfolio_price FLOAT,
     
     a2_amount INT,
+	a2_amount_change INT,
     a2_medium_price FLOAT,
     a2_local_value FLOAT,
     a2_portfolio_value FLOAT,
@@ -193,6 +196,7 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     a3_portfolio_price FLOAT,
         
     a3_amount INT,
+	a3_amount_change INT,
     a3_medium_price FLOAT,
     a3_local_value FLOAT,
     a3_portfolio_value FLOAT,
@@ -215,6 +219,7 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     a4_portfolio_price FLOAT,
     
     a4_amount INT,
+    a4_amount_change INT,
     a4_medium_price FLOAT,
     a4_local_value FLOAT,
     a4_portfolio_value FLOAT,
@@ -245,6 +250,7 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     
     buy FLOAT DEFAULT 0,
 	sell FLOAT DEFAULT 0,
+    transaction_costs FLOAT DEFAULT 0,
 	deposit FLOAT DEFAULT 0,
 	withdrawl FLOAT DEFAULT 0,
 	tot_change FLOAT DEFAULT 0,
@@ -273,9 +279,6 @@ INSERT INTO sim_temp (date)
 UPDATE sim_temp ph
 SET 
 p_name 				= 	@p_name,
-
-
-
 a1_isin 			= 	@asset_1,	
 a1_price			= 	(SELECT last_close FROM asset_prices ap WHERE isin = @asset_1 AND ph.date = ap.date),
 a1_forex_pair		=	IF(@a1_currency = @p_currency, @p_currency, (SELECT forex_pair FROM forex_pair WHERE forex_pair IN (CONCAT(@p_currency, @a1_currency), CONCAT(@a1_currency, @p_currency)))),
@@ -319,13 +322,21 @@ a1_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a1
 a2_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a2_allocation / 100 / a2_portfolio_price), -- CHECK AFTER CHANGES
 a3_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a3_allocation / 100 / a3_portfolio_price), -- CHECK AFTER CHANGES
 a4_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a4_allocation / 100 / a4_portfolio_price), -- CHECK AFTER CHANGES
+a1_amount_change		= a1_amount,
+a2_amount_change		= a2_amount,
+a3_amount_change		= a3_amount,
+a4_amount_change		= a4_amount,
 a1_portfolio_value		= a1_amount * a1_portfolio_price,
 a2_portfolio_value		= a2_amount * a2_portfolio_price,
 a3_portfolio_value		= a3_amount * a3_portfolio_price,
 a4_portfolio_value		= a4_amount * a4_portfolio_price,
 p_value 				= a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value,
 buy 					= a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value,
-tot_change				= -(a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value),
+transaction_costs		= -(IF(a1_amount_change != 0, 1, 0)
+							+ IF(a2_amount_change != 0, 1, 0)
+							+ IF(a3_amount_change != 0, 1, 0)
+							+ IF(a4_amount_change != 0, 1, 0)) * @p_transaction_cost,
+tot_change				= -(a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value) + transaction_costs,
 acc_balance				= @inicial_balance + tot_change,
 tot_balance				= p_value + acc_balance,
 leverage_rate			= p_value / tot_balance,
@@ -343,6 +354,7 @@ INSERT INTO sim_looper SELECT* FROM sim_temp;
 
 END //
 ;
+
 
 DELIMITER //
 CREATE PROCEDURE sim_step2() -- Creating the portfolio simulation day by day
@@ -392,8 +404,10 @@ t1.a4_amount 				= IF((ABS(t2.a4_prev_allocation * 100 - @a4_allocation) / @a4_a
                                 OR ABS(prev_leverage_rate *100 - @p_leverage) >= @p_lev_rebalancing,
 									FLOOR(t2.prev_tot_balance * COALESCE(@p_leverage / 100 + 1, 1) * @a4_allocation / 100 / a4_portfolio_price),
                                     t2.prev_a4_amount),
-                                    
-                                    
+a1_amount_change       		= a1_amount - prev_a1_amount,                             
+a2_amount_change			= a2_amount - prev_a2_amount, 
+a3_amount_change			= a3_amount - prev_a3_amount, 
+a4_amount_change			= a4_amount - prev_a4_amount,                                    
 t1.a1_portfolio_value 		= a1_amount * a1_portfolio_price,
 t1.a2_portfolio_value 		= a2_amount * a2_portfolio_price,
 t1.a3_portfolio_value 		= a3_amount * a3_portfolio_price,
@@ -408,6 +422,10 @@ t1.sell						=	(SELECT 	IF(a1_amount < t2.prev_a1_amount, -t1.a1_portfolio_price
 											IF(a2_amount < t2.prev_a2_amount, -t1.a2_portfolio_price * (t1.a2_amount - t2.prev_a2_amount),0)+ 
 											IF(a3_amount < t2.prev_a3_amount, -t1.a3_portfolio_price * (t1.a3_amount - t2.prev_a3_amount),0)+ 
 											IF(a4_amount < t2.prev_a4_amount, -t1.a4_portfolio_price * (t1.a4_amount - t2.prev_a4_amount),0)),
+transaction_costs 			= 	-(IF(a1_amount_change != 0, 1, 0)
+								+ IF(a2_amount_change != 0, 1, 0)
+								+ IF(a3_amount_change != 0, 1, 0)
+								+ IF(a4_amount_change != 0, 1, 0)) * @p_transaction_cost,
 t1.tot_change				=	t1.buy + t1.sell + t1.deposit + t1.withdrawl,
 t1.acc_balance				=	CASE
 								WHEN t1.date = @first_date THEN tot_change
@@ -415,10 +433,10 @@ t1.acc_balance				=	CASE
 								END,
 t1.tot_balance				=	acc_balance + p_value,
 leverage_rate				=	p_value / tot_balance -1,
-a1_allocation 				= (a1_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a2_allocation 				= (a2_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a3_allocation 				= (a3_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a4_allocation 				= (a4_portfolio_value / (tot_balance*((@p_leverage+100)/100)))
+a1_allocation 				= 	(a1_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
+a2_allocation 				= 	(a2_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
+a3_allocation 				= 	(a3_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
+a4_allocation 				= 	(a4_portfolio_value / (tot_balance*((@p_leverage+100)/100)))
 
 WHERE t1.date = loop_date;
         
@@ -429,7 +447,6 @@ WHERE t1.date = loop_date;
 
 END //
 ;
-
 
 
 DELIMETER //
@@ -453,8 +470,9 @@ usd_exposure_eur	= usd_exposure_usd / (SELECT last_close FROM forex_prices WHERE
 eur_exposure		= IF(@a1_currency = 'EUR', a1_local_value, 0)
 					+ IF(@a2_currency = 'EUR', a2_local_value, 0)
                     + IF(@a3_currency = 'EUR', a3_local_value, 0)
-                    + IF(@a4_currency = 'EUR', a4_local_value, 0); 
+                    + IF(@a4_currency = 'EUR', a4_local_value, 0);
 
+                  
 
 UPDATE sim_looper t1 
 JOIN (SELECT 

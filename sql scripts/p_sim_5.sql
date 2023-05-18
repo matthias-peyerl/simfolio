@@ -1,5 +1,5 @@
 -- SETTING UP USER DEFINED INPUT OPTIONS
-SET @p_name = 'PT2';
+SET @p_name = 'PT1';
 SET @username = 'MATT';
 SET @inicial_balance = 100000;
 SET @strategy = '150:0';
@@ -27,4 +27,6 @@ CALL sim_step2();
 CALL sim_step3();
 CALL sim_save();
 
-
+SELECT* 
+FROM sim_looper;
+WHERE transaction_costs = -3;

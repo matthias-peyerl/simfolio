@@ -86,9 +86,11 @@ CREATE TABLE portfolio (
     p_name VARCHAR(100) NOT NULL UNIQUE,
     p_currency VARCHAR(10),
     p_strategy VARCHAR(100) NULL,
+    p_transaction_cost FLOAT DEFAULT 0, 
     CONSTRAINT FK_p_currency FOREIGN KEY (p_currency)
 	REFERENCES currency(iso_code)
 );
+
 
 CREATE TABLE portfolio_assets (
     portfolio_name VARCHAR(100),
