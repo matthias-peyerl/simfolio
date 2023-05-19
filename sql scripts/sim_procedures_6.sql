@@ -29,6 +29,7 @@ SET
 @p_min_rebalancing = (SELECT min_rebalancing FROM strategies WHERE strategy_name = @strategy),
 @p_rel_rebalancing = (SELECT rel_rebalancing FROM strategies WHERE strategy_name = @strategy),
 @p_transaction_cost = (SELECT p_transaction_cost FROM portfolio WHERE p_name = @p_name),
+@p_interest_augment = 1, -- INTEREST AUGMENTATION OF RFR + _%
 @asset_1 = (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name ORDER BY isin LIMIT 1 OFFSET 0), 
 @asset_2 = (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name ORDER BY isin LIMIT 1 OFFSET 1),
 @asset_3 = (SELECT isin FROM portfolio_assets WHERE portfolio_name = @p_name ORDER BY isin LIMIT 1 OFFSET 2),
@@ -133,7 +134,19 @@ FROM (SELECT date, close, isin instrument
 ORDER BY date asc
 LIMIT 1)first_date);
 
+
+-- ADJUSTING TO ALTERNATIVE START AND END DAYS IF THEY EXIST
+
+
+SET @first_date = IF(@alt_start != '',@alt_start, @first_date);
+SET @last_date = IF(@alt_end != '',@alt_end, @last_date);
+
+
+
 END //
+
+
+
 ;
 
 DELIMITER //
@@ -251,6 +264,7 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     buy FLOAT DEFAULT 0,
 	sell FLOAT DEFAULT 0,
     transaction_costs FLOAT DEFAULT 0,
+    interest FLOAT DEFAULT 0,
 	deposit FLOAT DEFAULT 0,
 	withdrawl FLOAT DEFAULT 0,
 	tot_change FLOAT DEFAULT 0,
@@ -263,7 +277,9 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
 	tot_balance_change_m FLOAT,
 	tot_balance_change_q FLOAT,
 	tot_balance_change_y FLOAT
+    
 );
+
 
 -- STEP 1 -> INTRODUCING CALENDAR DATES
 
@@ -352,6 +368,10 @@ WHERE date 				= @first_date;
 CREATE TABLE sim_looper LIKE sim_temp;
 INSERT INTO sim_looper SELECT* FROM sim_temp;
 
+ALTER TABLE sim_looper 
+ADD INDEX idx_date(date);
+
+
 END //
 ;
 
@@ -426,7 +446,18 @@ transaction_costs 			= 	-(IF(a1_amount_change != 0, 1, 0)
 								+ IF(a2_amount_change != 0, 1, 0)
 								+ IF(a3_amount_change != 0, 1, 0)
 								+ IF(a4_amount_change != 0, 1, 0)) * @p_transaction_cost,
-t1.tot_change				=	t1.buy + t1.sell + t1.deposit + t1.withdrawl,
+-- THE INTEREST IS BEING CALCULATED ON A DAILY BASIS instead of a monthly one for ease of programing. The rate is set as the RFR + 1%, which is a realistic rate for a serious brokerage firm. 
+interest					= 	IF(prev_acc_balance < 0, prev_acc_balance * (SELECT last_rate + @p_interest_augment 
+																				FROM econ_indicators_values 
+																				WHERE symbol = 'EUR-RFR' 
+                                                                                AND date = t1.date)
+                                                                                /100/365, 
+                                                                                0),
+
+
+
+
+t1.tot_change				=	t1.buy + t1.sell + t1.deposit + t1.withdrawl + t1.transaction_costs + t1.interest,
 t1.acc_balance				=	CASE
 								WHEN t1.date = @first_date THEN tot_change
 								ELSE t2.prev_acc_balance + tot_change

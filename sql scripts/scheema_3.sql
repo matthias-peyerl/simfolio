@@ -54,13 +54,15 @@ VALUES ('EUR-RFR', 'Euro Risk Free Rate', 'Euribor weekly until including 2019 a
 CREATE TABLE econ_indicators_values (
 date DATE,
 symbol VARCHAR(50), 
-value FLOAT, 
+rate FLOAT,
+last_rate FLOAT,
 CONSTRAINT PK_date_name PRIMARY KEY (date, symbol),
 CONSTRAINT FK_indicator_name FOREIGN KEY (symbol)
 REFERENCES econ_indicators(symbol));
 
 -- IMPORTING INDICATOR MANUALLY
 -- 1. IMPORTING EURIBOR UNTIL INCLUDING 2019 
+-- AND INSTERING DATA INTO TEMP TABLE FOR IMPORT
 SELECT* FROM euribor_daily_rates_import;
 DESC euribor_daily_rates_import;
 
@@ -68,17 +70,15 @@ ALTER TABLE euribor_daily_rates_import
 MODIFY myUnknownColumn DATE;
 
 ALTER TABLE euribor_daily_rates_import
-RENAME COLUMN myUnknownColumn TO date;
+RENAME COLUMN myUnknownColumn TO date,
+RENAME COLUMN `1w` TO rate;
 
-INSERT INTO econ_indicators_values
-SELECT date, 'EUR-RFR', `1w`
+CREATE TABLE econ_indicator_imp AS 
+SELECT date date, 'EUR-RFR' AS indicator, rate
 FROM euribor_daily_rates_import
 WHERE year(date) <= 2019;
 
-DROP TABLE euribor_daily_rates_import;
-
--- 2. IMPORTING AND ADDING €STR FRO M 2020 ONWARDS
-
+-- 2. Same procedure for the €STR values for 2020 and later
 SELECT* FROM str_import;
 DESC str_import;
 
@@ -88,24 +88,43 @@ FROM str_import
 WHERE `EST.B.EU000A2X2A25.WT` LIKE '%e%';
 
 ALTER TABLE str_import
-MODIFY date DATE;
-
-ALTER TABLE str_import
+MODIFY date DATE,
 RENAME COLUMN `EST.B.EU000A2X2A25.WT` TO rate;
 
-INSERT INTO econ_indicators_values
+INSERT INTO econ_indicator_imp
 SELECT date, 'EUR-RFR', rate
 FROM str_import
 WHERE year(date) > 2019;
 
+-- SETTING DATE VARIABLES AND CREATING FINAL IMPORT TABLE
+
+SET @min_date_imp = (SELECT MIN(date) FROM econ_indicator_imp);
+SET @max_date_imp = (SELECT MAX(date) FROM econ_indicator_imp);
+
+CREATE TABLE econ_indicator_imp2 AS
+SELECT c.date, 'EUR-RFR' as symbol, rate,
+IF(rate IS NOT NULL, rate, COALESCE((LAG(rate,1) OVER (ORDER BY c.date)),
+										(LAG(rate,2) OVER (ORDER BY c.date)),
+										(LAG(rate,3) OVER (ORDER BY c.date)),
+                                        (LAG(rate,4) OVER (ORDER BY c.date)),
+                                        (LAG(rate,5) OVER (ORDER BY c.date))
+									)) last_rate													
+FROM econ_indicator_imp e
+RIGHT JOIN calendar c
+ON c.date = e.date
+WHERE c.date BETWEEN @min_date_imp and @max_date_imp;
+
+INSERT INTO econ_indicators_values (date, symbol, rate, last_rate)
+SELECT date, symbol, rate, last_rate
+FROM econ_indicator_imp2;
+
+select*
+from econ_indicators_values;
+
+DROP TABLE econ_indicator_imp;
+DROP TABLE econ_indicator_imp2;
 DROP TABLE str_import;
-
-SELECT*
-FROM econ_indicators_values;
-
-
-
-
+DROP TABLE euribor_daily_rates_import;
 
 
 

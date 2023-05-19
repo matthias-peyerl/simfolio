@@ -32,6 +32,7 @@ ALTER TABLE data_import
 MODIFY Date date;
 
 SET @min_date_imp = (SELECT MIN(date) FROM data_import);
+SET @max_date_imp = (SELECT MAX(date) FROM data_import);
 
 CREATE TABLE asset_table AS
 SELECT c.date, open, high, low, close, `Adj Close` adj_close, volume,
@@ -44,7 +45,7 @@ IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
 FROM data_import d
 RIGHT JOIN calendar c
 ON c.date = d.date
-WHERE c.date BETWEEN @min_date_imp and current_date();
+WHERE c.date BETWEEN @min_date_imp and @max_date_imp;
 
 ALTER TABLE asset_table
 ADD COLUMN mid FLOAT,
@@ -54,7 +55,7 @@ ADD COLUMN ticker VARCHAR(20);
 
 UPDATE asset_table
 SET
-mid				= (open + high + low + close) / 4,
+mid				= (high + low) / 4,
 isin			= import_isin,
 data_provider 	= data_provider,
 ticker 			= import_ticker;

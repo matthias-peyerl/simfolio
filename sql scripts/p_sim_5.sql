@@ -1,16 +1,21 @@
 -- SETTING UP USER DEFINED INPUT OPTIONS
-SET @p_name = 'PT1';
-SET @username = 'MATT';
-SET @inicial_balance = 100000;
-SET @strategy = '150:0';
+SET @p_name 			= 'PT2';
+SET @username 			= 'MATT';
+SET @inicial_balance 	= 100000;
+SET @strategy 			= '150:0';
+
+-- SETTING ALTERNATIVE START AND END DAYS
+SET @alt_start			='';--  '2020-01-01';
+SET @alt_end			=''; --  '2020-06-01';
 
 CALL run_simulation();
 CALL sim_save();
 CALL run_and_save();
 
 -- LAST SIMULATIONS RESULTS
-SELECT*
-FROM sim_looper; 
+SELECT* --  COUNT(*)
+FROM sim_looper
+WHERE interest = 1; 
 
 SELECT @last_date;
 
@@ -27,6 +32,6 @@ CALL sim_step2();
 CALL sim_step3();
 CALL sim_save();
 
-SELECT* 
+SELECT* --  SUM(transaction_costs)
 FROM sim_looper;
 WHERE transaction_costs = -3;
