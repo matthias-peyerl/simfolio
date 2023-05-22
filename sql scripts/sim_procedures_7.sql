@@ -1,5 +1,31 @@
 
+SELECT CEILING((DATEDIFF(@last_date, @first_date)-1)/@batch_size) ;
 SELECT @last_date;
+
+
+CALL run_simulation;
+
+CALL user_update();
+CALL sim_prepare();
+CALL sim_table_creation();
+CALL sim_relative_looper();
+CALL sim_final_data_population();
+
+
+DROP PROCEDURE sim_prepare;
+DROP PROCEDURE sim_table_creation;
+DROP PROCEDURE sim_relative_looper;
+DROP PROCEDURE sim_final_data_population;
+DROP PROCEDURE run_simulation;
+
+SELECT * FROM sim_temp;
+
+SELECT COUNT(*) FROM sim_temp
+WHERE a1_amount IS NOT NULL;
+DROP TABLE sim_temp;
+
+SELECT* FROM sim_looper;
+DROP TABLE sim_looper;
 
 DELIMITER //
 CREATE PROCEDURE user_update()
@@ -21,6 +47,7 @@ DROP TABLE IF EXISTS temp_p_forex_pairs;
 DROP TABLE IF EXISTS p_forex_count;
 DROP TABLE IF EXISTS sim_looper;
 DROP TABLE IF EXISTS sim_temp;
+DROP TABLE IF EXISTS p_simulation;
 
 SET
 @p_currency = (SELECT p_currency FROM portfolio WHERE p_name = @p_name),
@@ -147,7 +174,7 @@ END //
 ;
 
 DELIMITER //
-CREATE PROCEDURE sim_step1() -- Creating the table and filling in date and price data 
+CREATE PROCEDURE sim_table_creation() -- Creating the table and filling in date and price data 
 BEGIN
 CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     date DATE PRIMARY KEY,
@@ -277,17 +304,13 @@ CREATE TEMPORARY TABLE sim_temp ( -- Temporary table for a simulation
     
 );
 
-
--- STEP 1 -> INTRODUCING CALENDAR DATES
-
 INSERT INTO sim_temp (date)
 	SELECT date 
 	FROM calendar
 	-- WHERE is_Weekday = 1
-    WHERE date BETWEEN @first_date AND @last_date
-	ORDER BY date desc;
+    WHERE date = @first_date; 
 
--- STEP 2 -> INTRODUCING KNOWN VALUES
+-- INTRODUCING KNOWN LOOKUP VALUES
 
 UPDATE sim_temp ph
 SET 
@@ -323,11 +346,9 @@ a4_fx_rate			= 	IF( @a4_currency = @p_currency, 1, (SELECT last_close FROM forex
 a4_portfolio_price	=	CASE 
 							WHEN a4_forex_pair = CONCAT(@a4_currency, @p_currency) THEN a4_price * a4_fx_rate
                             ELSE a4_price / a4_fx_rate
-						END, 
-deposit				= 0,
-withdrawl			= 0;
+						END;
 
--- STEP 3:  INTRODUCING FIRST LINE OF VALUES 
+-- INTRODUCING FIRS ROW VALUES
 
 UPDATE sim_temp
 SET 
@@ -360,26 +381,98 @@ a4_allocation 			= (a4_portfolio_value / (tot_balance*((@p_leverage+100)/100)))
 
 WHERE date 				= @first_date;
 
--- TO AVOID ISSUES WITH REOPENING TABLES (WHAT SQL REFUSES TO DO ON OCCASION) I CREATE A NEW COPY OF THE RESULTS TABLE AND DELETE THE OLD ONE. 
--- THAT ALSO HELPS TO AVOID HAVING TO ALWAYS DELETE THE TABLES ON STARTING OVER.
-CREATE TABLE sim_looper LIKE sim_temp;
-INSERT INTO sim_looper SELECT* FROM sim_temp;
+-- CREATE TABLE sim_looper LIKE sim_temp;
+-- INSERT INTO sim_looper SELECT* FROM sim_temp;
 
-ALTER TABLE sim_looper 
+ALTER TABLE sim_temp
+-- ALTER TABLE sim_looper 
 ADD INDEX idx_date(date);
 
-
 END //
-;
+
+
+-- 1. INTRODUCING FIRST DATE AND FIRST ROW VALUES
+-- 2. LOOP WITH X + 1 DATES PER ROUNDTRIP
+-- 		SELECT LATEST VALUES OF SIM_TABLE 
+-- 			IF THEY ARE < @LAST_DATE --> WHILE MAX(DATE) < LAST_DATE, DO:
+-- 				INTRODUCE THEM INTO THE NEW TABLE
+-- 	 			INTRODUCE 100 MORE CALENDAR DAYS
+-- 				INTRODUCE KNOWN VALUES
+-- 				CALCULATE VALUES
+-- 				DELETE FIRST ROW
+-- 				UNITE THE TABLE WITH MAIN TABLE 		
+-- 			ELSE STOP LOOP AND DELETE DATES THAT ARE > @LAST DATE	
 
 DELIMITER //
-CREATE PROCEDURE sim_relative_step2() -- Creating the portfolio simulation day by day
+CREATE PROCEDURE sim_relative_looper() -- Creating the portfolio simulation day by day
 BEGIN
 
-DECLARE counter INT DEFAULT 2; -- SETTING THE INICIAL COUNTER TO TWO BECAUSE THERE WILL BE ONE DATE IN THE TABLE ALREADY
-DECLARE loop_date DATE DEFAULT ADDDATE(@first_date, 1);
+DECLARE outer_counter INT DEFAULT 1;
+DECLARE inner_counter INT DEFAULT 1; -- SETTING THE INICIAL COUNTER TO TWO BECAUSE THERE WILL BE ONE DATE IN THE TABLE ALREADY
+DECLARE loop_date DATE DEFAULT ADDDATE((SELECT MAX(date) FROM sim_temp GROUP BY date), 1);
 
-WHILE counter <= (SELECT datediff(@last_date, @first_date)+1) DO
+CREATE TABLE sim_looper LIKE sim_temp;
+
+-- START THE OUTER LOOP TO INTRODUCE A NEW BATCH AND THEN LOOP THROUH IT IN THE INNER LOOP
+-- INTRODUCE NEW BATCH 
+
+-- SETTING THE COUNTER FOR THE OUTER LOOP TO THE TOTAL DAYS DEVIDED BY BATCH SIZE ROUNDING UP (AND LATER DELETING ROWS WITH NULL VALUES)
+
+WHILE outer_counter <= CEILING((DATEDIFF(@last_date, @first_date)-1)/@batch_size) DO
+
+SET @max_date = (SELECT date FROM sim_temp ORDER BY date DESC LIMIT 1);
+
+-- INSERT LAST ROW FROM EXISTING DATA IN TABLE
+INSERT INTO sim_looper 
+	SELECT* FROM sim_temp WHERE date = @max_date; 
+
+-- INSERT BATCHSIZE DATES
+INSERT INTO sim_looper (date)
+	SELECT date 
+	FROM calendar
+    WHERE date BETWEEN adddate(@max_date, 1) 
+				AND adddate(@max_date, @batch_size); 
+
+-- INSERT KNOWN LOOKUP DATA
+UPDATE sim_looper ph
+SET 
+p_name 				= 	@p_name,
+a1_isin 			= 	@asset_1,	
+a1_price			= 	(SELECT last_close FROM asset_prices ap WHERE isin = @asset_1 AND ph.date = ap.date),
+a1_forex_pair		=	IF(@a1_currency = @p_currency, @p_currency, (SELECT forex_pair FROM forex_pair WHERE forex_pair IN (CONCAT(@p_currency, @a1_currency), CONCAT(@a1_currency, @p_currency)))),
+a1_fx_rate			= 	IF( @a1_currency = @p_currency, 1, (SELECT last_close FROM forex_prices WHERE forex_pair = ph.a1_forex_pair AND date = ph.date)),
+a1_portfolio_price	=	CASE 
+							WHEN a1_forex_pair = CONCAT(@a1_currency, @p_currency) THEN a1_price * a1_fx_rate
+                            ELSE a1_price / a1_fx_rate
+						END, 
+a2_isin 			= 	@asset_2,	
+a2_price			= 	(SELECT last_close FROM asset_prices ap WHERE isin = @asset_2 AND ph.date = ap.date),
+a2_forex_pair		=	IF(@a2_currency = @p_currency, @p_currency, (SELECT forex_pair FROM forex_pair WHERE forex_pair IN (CONCAT(@p_currency, @a2_currency), CONCAT(@a2_currency, @p_currency)))),
+a2_fx_rate			= 	IF( @a2_currency = @p_currency, 1, (SELECT last_close FROM forex_prices WHERE forex_pair = ph.a2_forex_pair AND date = ph.date)),
+a2_portfolio_price	=	CASE 
+							WHEN a2_forex_pair = CONCAT(@a2_currency, @p_currency) THEN a2_price * a2_fx_rate
+                            ELSE a2_price / a2_fx_rate
+						END, 
+a3_isin 			= 	@asset_3,	
+a3_price			= 	(SELECT last_close FROM asset_prices ap WHERE isin = @asset_3 AND ph.date = ap.date),
+a3_forex_pair		=	IF(@a3_currency = @p_currency, @p_currency, (SELECT forex_pair FROM forex_pair WHERE forex_pair IN (CONCAT(@p_currency, @a3_currency), CONCAT(@a3_currency, @p_currency)))),
+a3_fx_rate			= 	IF( @a3_currency = @p_currency, 1, (SELECT last_close FROM forex_prices WHERE forex_pair = ph.a3_forex_pair AND date = ph.date)),
+a3_portfolio_price	=	CASE 
+							WHEN a3_forex_pair = CONCAT(@a3_currency, @p_currency) THEN a3_price * a3_fx_rate
+                            ELSE a3_price / a3_fx_rate
+						END, 
+a4_isin 			= 	@asset_4,	
+a4_price			= 	(SELECT last_close FROM asset_prices ap WHERE isin = @asset_4 AND ph.date = ap.date),
+a4_forex_pair		=	IF(@a4_currency = @p_currency, @p_currency, (SELECT forex_pair FROM forex_pair WHERE forex_pair IN (CONCAT(@p_currency, @a4_currency), CONCAT(@a4_currency, @p_currency)))),
+a4_fx_rate			= 	IF( @a4_currency = @p_currency, 1, (SELECT last_close FROM forex_prices WHERE forex_pair = ph.a4_forex_pair AND date = ph.date)),
+a4_portfolio_price	=	CASE 
+							WHEN a4_forex_pair = CONCAT(@a4_currency, @p_currency) THEN a4_price * a4_fx_rate
+                            ELSE a4_price / a4_fx_rate
+						END;
+
+-- CREATING THE INNER LOOP
+
+WHILE inner_counter <= @batch_size AND loop_date <= @last_date DO
 		
 UPDATE sim_looper t1
 JOIN (
@@ -453,10 +546,6 @@ interest					= 	IF(prev_acc_balance < 0, prev_acc_balance * (SELECT last_rate + 
                                                                                 AND date = t1.date)
                                                                                 /100/365, 
                                                                                 0),
-
-
-
-
 t1.tot_change				=	t1.buy + t1.sell + t1.deposit + t1.withdrawl + t1.transaction_costs + t1.interest,
 t1.acc_balance				=	CASE
 								WHEN t1.date = @first_date THEN tot_change
@@ -471,22 +560,36 @@ a4_allocation 				= 	(a4_portfolio_value / (tot_balance*((@p_leverage+100)/100))
 
 WHERE t1.date = loop_date;
         
-        SET counter = counter + 1;
+        SET inner_counter = inner_counter + 1;
         SET loop_date = DATE_ADD(loop_date, INTERVAL 1 DAY);
         
-	END WHILE;
+END WHILE;
 
--- ONCE THE CODE IS FINISHED THE PERIODIC TRIGGER COLUMNS SHOULD BE DELETED HERE
+INSERT INTO sim_temp
+	SELECT* 
+	FROM sim_looper
+    WHERE date != @max_date;
+
+DELETE
+FROM sim_looper;
+
+SET inner_counter = 1;
+SET outer_counter = outer_counter + 1;
+
+END WHILE;
+
+DROP TABLE sim_looper;
+DELETE FROM sim_temp
+WHERE a1_amount IS NULL;
 
 END //
 ;
 
-
 DELIMETER //
-CREATE PROCEDURE sim_step3() -- Filling the table with the remaining data based on the simulation data
+CREATE PROCEDURE sim_final_data_population() -- Filling the table with the remaining data based on the simulation data
 BEGIN
 
-UPDATE sim_looper sl
+UPDATE sim_temp sl
 SET
 a1_local_value 		= a1_price * a1_amount,
 a2_local_value 		= a2_price * a2_amount,
@@ -505,9 +608,12 @@ eur_exposure		= IF(@a1_currency = 'EUR', a1_local_value, 0)
                     + IF(@a3_currency = 'EUR', a3_local_value, 0)
                     + IF(@a4_currency = 'EUR', a4_local_value, 0);
 
-                  
+CREATE TABLE p_simulation LIKE sim_temp;     
 
-UPDATE sim_looper t1 
+INSERT INTO p_simulation
+SELECT * FROM sim_temp;             
+
+UPDATE p_simulation t1 
 JOIN (SELECT 
 date, 
 a1_price, 
@@ -568,9 +674,7 @@ LAG(tot_balance,7) OVER (ORDER BY date) AS prev_tot_balance_7d,
 LAG(tot_balance,30) OVER (ORDER BY date) AS prev_tot_balance_30d,
 LAG(tot_balance,90) OVER (ORDER BY date) AS prev_tot_balance_90d,
 LAG(tot_balance,365) OVER (ORDER BY date) AS prev_tot_balance_365d
-
-
-FROM sim_looper) t2
+FROM p_simulation) t2
 ON t1.date = t2.date
 SET 
 t1.a1_local_change_d 	= ((t1.a1_price - t2.a1_prev_price_1d) / t2.a1_prev_price_1d) * 100,
@@ -623,8 +727,9 @@ t1.tot_balance_change_m 	= ((t1.tot_balance - t2.prev_tot_balance_30d) / t2.prev
 t1.tot_balance_change_q 	= ((t1.tot_balance - t2.prev_tot_balance_90d) / t2.prev_tot_balance_90d) * 100,
 t1.tot_balance_change_y 	= ((t1.tot_balance - t2.prev_tot_balance_365d) / t2.prev_tot_balance_365d) * 100;
 
+
 SELECT* 
-FROM sim_looper;
+FROM p_simulation;
 
 END //
 ;
@@ -645,6 +750,25 @@ SELECT* FROM sim_looper;
 END //
 ;
 
+
+DELIMETER //
+CREATE PROCEDURE run_simulation()
+BEGIN 
+
+CALL user_update();
+CALL sim_prepare();
+CALL sim_table_creation();
+CALL sim_relative_looper();
+CALL sim_final_data_population();
+
+END //
+;
+
+
+
+
+
+/*
 
 DELIMETER //
 CREATE PROCEDURE run_simulation()
@@ -672,7 +796,7 @@ CALL sim_save;
 
 END //
 
-
+/*
 
 DELIMITER //
 CREATE PROCEDURE sim_periodic_trigger(period VARCHAR(50))
@@ -894,3 +1018,4 @@ WHERE t1.date = loop_date;
 
 END //
 ;
+*/
