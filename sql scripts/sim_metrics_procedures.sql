@@ -1,4 +1,545 @@
 
+-- 1. GETTING PORTFOLIO PERFORMANCE DATA
+-- 2. CALCULATING MAXIMUM DRAWDOWN (MDD)
+-- 		Monthly
+-- 		Annually
+-- 		Globally	
+-- 		2.1 Creating respective tables
+
+
+
+-- 1. GETTING PORTFOLIO PERFORMANCE DATA
+
+SELECT* 
+FROM p_simulation;
+
+-- 2. CALCULATING MAXIMUM DRAWDOWN (MDD)
+-- 2.1. CREATING RESPECTIVE TABLES
+
+-- Monthly table
+
+
+CREATE TABLE p_sim_performance_m (
+month INT,
+year YEAR,
+perdiod_return FLOAT,
+period_rfr FLOAT,
+maximum_dd FLOAT,
+variance FLOAT, 
+standard_dev FLOAT,
+sharp_ratio FLOAT,
+sortino_ratio FLOAT,
+beta FLOAT);
+
+ALTER TABLE p_sim_performance_m
+ADD COLUMN variance FLOAT;
+
+
+-- INSERTING ALL MONTHS AND YEARS PRESENT IN THE PORTFOLIO 
+INSERT INTO p_sim_performance_m (month, year)
+SELECT month, year
+FROM 
+	(SELECT 
+		DISTINCT CONCAT(year(date), '-', month(date)), 
+        month(date) AS month, 
+        year(date) AS year
+	FROM p_simulation) t2;
+
+-- CALCULATING AND INTRODUCING THE MAX DD PER PERIOD
+UPDATE p_sim_performance_m
+SET 
+maximum_dd = (SELECT min(dd) 
+				FROM 
+					(SELECT 
+						date, 
+						tot_balance, 
+						max(tot_balance) OVER (ORDER BY date) AS max_value, 
+						(tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+					FROM p_simulation
+					WHERE tot_balance IS NOT NULL
+					AND month(date) = p_sim_performance_m.month
+					AND year(date)=	p_sim_performance_m.year) dd_series
+				)
+;
+
+
+-- STANDART DEVIATION CALCULATION
+-- Here we can see that the result of the standart deviation is slightly higher when leaving all calendar days in, 
+-- instead of sorting all non weekday days out and leaving (almost) only trading days in. 
+-- The reason for this being, that although the some days are not trading days, they still have the interest payments going as a value deduction.
+
+
+SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+FROM p_simulation
+WHERE month(date) = 1 --  p_sim_performance_m.month
+AND year(date)=	2015; --  p_sim_performance_m.year) dd_series;
+
+
+-- ----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+SET @P_VAR =
+(SELECT VARIANCE(tot_balance_change_d/100)
+FROM p_simulation
+WHERE month(date) = 5 --  p_sim_performance_m.month
+AND year(date)=	2015);
+
+SET @B_VAR =
+(SELECT variance(benchmark_change_pct) 
+										FROM (
+											SELECT 
+											date, isin, ((close - LAG(last_close) OVER (ORDER BY date)) / LAG(last_close) OVER (ORDER BY date)) AS benchmark_change_pct 
+											FROM asset_prices
+											WHERE isin = @beta_benchmark
+                                            AND month(date) = 5 --  p_sim_performance_m.month
+											AND year(date)=	2015
+											INNER JOIN p_simulation
+                                            WHERE month(date) = 5 --  p_sim_performance_m.month
+											AND year(date)=	2015);
+											AND month(date) = 5 --  p_sim_performance_m.month
+											AND year(date)=	2015) 
+                                            ON 
+
+SET @CO_VAR =
+
+
+
+
+SELECT AVG(pow((tot_balance_change_d - 0.40128221315512014),2));
+
+
+
+-- CALCULATING COVARIANCE
+
+SELECT ((VARIANCE(tot_balance_change_d)	* 
+										(SELECT variance(benchmark_change_pct)
+										FROM (SELECT 
+										date, isin, ((close - LAG(last_close) OVER (ORDER BY date)) / LAG(last_close) OVER (ORDER BY date)) * 100 AS benchmark_change_pct 
+										FROM asset_prices
+										WHERE isin = @beta_benchmark
+										AND month(date) = 1 --  p_sim_performance_m.month
+										AND year(date)=	2015) T2) 
+                                        / 
+                                        COUNT(p_simulation.date))/(VARIANCE(tot_balance_change_d))) AS beta 
+FROM p_simulation
+WHERE month(date) = 1 --  p_sim_performance_m.month
+AND year(date)=	2015;
+
+SET @beta_benchmark = 'SP500';
+
+
+
+
+SELECT variance(benchmark_change_pct)
+FROM (SELECT 
+date, isin, ((close - LAG(last_close) OVER (ORDER BY date)) / LAG(last_close) OVER (ORDER BY date)) * 100 AS benchmark_change_pct 
+FROM asset_prices
+WHERE isin = @beta_benchmark
+AND month(date) = 1 --  p_sim_performance_m.month
+AND year(date)=	2015) T2 ;
+
+
+
+
+-- Calculating the daily changes in the benchmark
+SELECT t1.isin AS Benchmark, AVG((t2.p_change_pct  * t1.benchmark_change_pct) / t1.benchmark_change_pct) AS Beta
+FROM 
+(SELECT 
+	date,
+    isin,
+	/*close, 
+    LAG(last_close) OVER (ORDER BY date) AS prev_close,
+    close - LAG(last_close) OVER (ORDER BY date) AS day_change_amt,*/
+    ((close - LAG(last_close) OVER (ORDER BY date)) / LAG(last_close) OVER (ORDER BY date)) * 100 AS benchmark_change_pct 
+FROM asset_prices
+WHERE isin = @beta_benchmark
+AND date >= @first_date
+AND date <= @last_date) AS t1
+LEFT JOIN 
+(SELECT 
+	date, 
+	tot_balance_change_d AS p_change_pct
+FROM p_simulation) AS t2
+ON t1.date = t2.date
+GROUP BY isin;
+;
+
+
+
+
+
+-- ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(t1.date)) 
+FROM p_simulation t1
+INNER JOIN 
+(SELECT date, is_weekday
+FROM calendar c) t2
+ON t2.date = t1.date
+WHERE month(t1.date) = 1 --  p_sim_performance_m.month
+AND year(t1.date)=	2015
+AND is_weekday = 1; --  p_sim_performance_m.year) dd_series;
+
+
+-- UPDATEING THE STANDART DEVIATION FOR A MONTHLY BASIS
+
+UPDATE p_sim_performance_m
+SET standard_dev =
+	(SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+	FROM p_simulation
+	WHERE tot_balance IS NOT NULL
+	AND month(date) = p_sim_performance_m.month
+	AND year(date)=	p_sim_performance_m.year);--  p_sim_performance_m.year) dd_series;
+
+
+-- CALCULATION THE PERIODS RETURN
+
+UPDATE p_sim_performance_m
+SET 
+period_return = (SELECT (t2.end_value/t1.start_value-1)*100
+					FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
+							FROM p_simulation
+							WHERE month(date) = p_sim_performance_m.month -- p_sim_performance_m.month
+							AND year(date)=	p_sim_performance_m.year
+							ORDER BY date ASC
+							LIMIT 1) t1 
+							JOIN
+							(SELECT date, tot_balance AS end_value
+							FROM p_simulation
+							WHERE month(date) = p_sim_performance_m.month -- p_sim_performance_m.month
+							AND year(date)=	p_sim_performance_m.year
+							ORDER BY date DESC
+							LIMIT 1) t2
+);
+
+-- INSERTING THE RISK FREE RATE
+
+UPDATE p_sim_performance_m
+SET period_rfr = (SELECT AVG(last_rate)/12*100
+					FROM econ_indicators_values t1
+					WHERE month(date) = p_sim_performance_m.month -- p_sim_performance_m.month
+					AND year(date)=	p_sim_performance_m.year);
+
+UPDATE p_sim_performance_m
+SET sharp_ratio = (period_return - period_rfr) / standard_dev;
+
+
+-- CALCULATING THE NEGATIVE STANDART DEVIATION FOR SORTINO RATIO
+
+SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+FROM p_simulation
+WHERE month(date) = 1 --  p_sim_performance_m.month
+AND year(date)=	2015
+AND tot_balance_change_d < 0
+;
+
+
+SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(t1.date)) 
+FROM p_simulation t1
+INNER JOIN 
+(SELECT date, is_weekday
+FROM calendar c) t2
+ON t2.date = t1.date
+WHERE month(t1.date) = 1 --  p_sim_performance_m.month
+AND year(t1.date)=	2015
+AND is_weekday = 1
+AND tot_balance_change_d < 0; 
+
+
+
+; --  p_sim_performance_m.year) dd_series
+
+
+-- UPDATING MONTHLY SORTINO RATIO
+UPDATE p_sim_performance_m
+SET 
+sortino_ratio = (period_return - period_rfr) / 
+	(SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+	FROM p_simulation
+	WHERE month(date) = p_sim_performance_m.month --  p_sim_performance_m.month
+	AND year(date)=	p_sim_performance_m.year
+	AND tot_balance_change_d < 0)
+    ;
+
+
+SELECT *
+FROM p_sim_performance_m;
+
+
+
+-- annual table
+DROP TABLE p_sim_performance_a;
+
+CREATE TABLE p_sim_performance_a (
+year YEAR, 
+period_return FLOAT,
+period_rfr FLOAT,
+maximum_dd FLOAT,
+standard_dev FLOAT,
+sharp_ratio FLOAT,
+sortino_ratio FLOAT,
+beta FLOAT);
+
+
+INSERT INTO p_sim_performance_a (year)
+SELECT year
+FROM 
+	(SELECT 
+		DISTINCT year(date) AS year
+	FROM p_simulation) t2;
+
+
+UPDATE p_sim_performance_a
+SET 
+maximum_dd = (SELECT min(dd) 
+				FROM 
+					(SELECT 
+						date, 
+						tot_balance, 
+						max(tot_balance) OVER (ORDER BY date) AS max_value, 
+						(tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+					FROM p_simulation
+					WHERE tot_balance IS NOT NULL
+					AND year(date)=	p_sim_performance_a.year) dd_series
+				)
+;
+
+UPDATE p_sim_performance_a
+SET standard_dev = 
+	(SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+	FROM p_simulation
+	WHERE tot_balance IS NOT NULL
+	AND year(date)=	p_sim_performance_a.year);--  p_sim_performance_m.year) dd_series;
+
+
+
+-- CALCULATING THE ANUAL RETURN
+UPDATE p_sim_performance_a
+SET 
+period_return = (SELECT (t2.end_value/t1.start_value-1)*100
+					FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
+							FROM p_simulation
+							WHERE year(date) = p_sim_performance_a.year
+							ORDER BY date ASC
+							LIMIT 1) t1 
+							JOIN
+							(SELECT date, tot_balance AS end_value
+							FROM p_simulation
+							WHERE year(date) = p_sim_performance_a.year
+							ORDER BY date DESC
+							LIMIT 1) t2
+);
+
+-- INSERTING THE RISK FREE RATE
+
+UPDATE p_sim_performance_a
+SET period_rfr = (SELECT AVG(last_rate)
+					FROM econ_indicators_values t1
+					WHERE year(t1.date) = p_sim_performance_a.year);
+
+UPDATE p_sim_performance_a
+SET sharp_ratio = (period_return - period_rfr) / standard_dev;
+
+
+-- UPDATING MONTHLY SORTINO RATIO
+UPDATE p_sim_performance_a
+SET 
+sortino_ratio = (period_return - period_rfr) / 
+	(SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+	FROM p_simulation
+	WHERE year(date)= p_sim_performance_a.year
+	AND tot_balance_change_d < 0)
+    ;
+
+
+
+SELECT *
+FROM p_sim_performance_a;
+
+
+
+-- global table
+DROP TABLE p_sim_performance_global; 
+
+
+CREATE TABLE p_sim_performance_global (
+portfolio VARCHAR(50),
+tot_return FLOAT,
+medium_annual_return FLOAT,
+medium_rfr FLOAT,
+maximum_dd FLOAT,
+standard_dev_annual_mean FLOAT,
+sharp_ratio_annual_mean FLOAT,
+sortino_ratio_annual_mean FLOAT,
+beta FLOAT
+);
+
+
+INSERT INTO p_sim_performance_global (portfolio)
+VALUES (@p_name);
+
+
+UPDATE p_sim_performance_global
+SET 
+maximum_dd = (SELECT min(dd) 
+				FROM 
+					(SELECT 
+						date, 
+						tot_balance, 
+						max(tot_balance) OVER (ORDER BY date) AS max_value, 
+						(tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+					FROM p_simulation
+					WHERE tot_balance IS NOT NULL) dd_series
+					)
+;
+
+-- IN THE GLOBAL METRICS IT ONLY MAKES SENSE TO TAKE THE AVERAGE YEARLY STANDART DEVIATION
+
+UPDATE p_sim_performance_global
+SET standard_dev_annual_mean 	= (SELECT AVG(standard_dev)
+								FROM p_sim_performance_a); 
+    
+UPDATE p_sim_performance_global
+SET tot_return 					= ((SELECT tot_balance 
+									FROM p_simulation 
+									WHERE date = @last_date) / @inicial_balance -1) *100;
+
+UPDATE p_sim_performance_global
+SET medium_annual_return 		= (SELECT AVG(period_return)
+									FROM p_sim_performance_a);
+
+UPDATE p_sim_performance_global
+SET sharp_ratio_annual_mean		= (SELECT AVG(sharp_ratio)
+									FROM p_sim_performance_a);
+
+UPDATE p_sim_performance_global
+SET sortino_ratio_annual_mean		= (SELECT AVG(sortino_ratio)
+									FROM p_sim_performance_a);
+
+
+
+SELECT *
+FROM p_sim_performance_global;
+
+
+SELECT AVG(sharp_ratio)
+									FROM p_sim_performance_a;
+
+
+SELECT *
+FROM p_sim_performance_a;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 -- CALCULATING PORTFOLIIO PERFORMANCE METRICS
 -- 1. DRAWDOWN TO DATE AND MAXIMUM DRAWDOWN
@@ -26,7 +567,6 @@ FROM sim_drawdown;
 
 
 -- 2. CALCULATING STANDART DEVIATIONS (MONTHLY, QUARTERLY AND YEARLY)
-
 SELECT 
 	STDDEV(tot_balance_change_m) AS stddev_monthly, 
 	STDDEV(tot_balance_change_q) AS stddev_quarterly, 
@@ -56,7 +596,7 @@ LEFT JOIN
 (SELECT 
 	date, 
 	tot_balance_change_d AS p_change_pct
-FROM sim_looper) AS t2
+FROM p_simulation) AS t2
 ON t1.date = t2.date
 GROUP BY isin;
 
@@ -85,6 +625,23 @@ SET @benchmark_return 				= (SELECT last_close FROM asset_prices WHERE date = @l
                             
 SET @p_avg_return_d					= (SELECT AVG(tot_balance_change_d) FROM sim_looper);
 SET @benchmark_avg_return_d			= (SELECT AVG(benchmark_change_pct_d) FROM bechmark_price_changes);
+
+
+SELECT 
+	date,
+    isin,
+	/*close, 
+    LAG(last_close) OVER (ORDER BY date) AS prev_close,
+    close - LAG(last_close) OVER (ORDER BY date) AS day_change_amt,*/
+    ((close - LAG(last_close) OVER (ORDER BY date)) / LAG(last_close) OVER (ORDER BY date)) * 100 AS benchmark_change_pct 
+FROM asset_prices
+WHERE isin = @beta_benchmark
+AND date >= @first_date
+AND date <= @last_date
+;
+
+
+
 
 
 SELECT 
