@@ -117,6 +117,7 @@ CALL prepare_sim_forex_data();
 CALL prepare_sim_asset_data();			
 CALL sim_table_creation();				
 CALL known_data_insertion(); 			-- very long
+CALL first_row_data_insertion();
 -- CALL first_row_data_insertion();		
 
 DROP TABLE sim_asset_1_prices2;
@@ -127,11 +128,8 @@ DROP PROCEDURE prepare_sim_forex_data;
 DROP PROCEDURE prepare_sim_asset_data;
 DROP PROCEDURE sim_table_creation;
 DROP PROCEDURE known_data_insertion;
+DROP PROCEDURE first_row_data_insertion;
 -- EVERYTHING SET. Now you can run the simulation: 
-
-SELECT*
-FROM sim_temp_a1;
-
 
 
 -- IN THIS PROCEDURE I STILL NEED TO FILTER FOR IT TO ONLY APPLY TO ASSETS WHERE LAST_CLOSE = NULL AT LEAST SOME DATE.
@@ -264,6 +262,7 @@ SET							-- 	Setting the variables from the portfolio assets table. Assets will
 END //
 ;
 
+-- Here I need to change the structure to be the same as in the assets
 DELIMETER //
 CREATE PROCEDURE prepare_sim_forex_data()
 BEGIN
@@ -327,152 +326,16 @@ BEGIN
 
 DROP TABLE IF EXISTS sim_asset_prices;
 
-
-
-SET @sim_asset_count		 = (SELECT COUNT(DISTINCT symbol) FROM portfolio_asset WHERE portfolio_name = @portfolio_name);
+-- NT SURE IF THIS IS STILL NEEDED
+-- SET @sim_asset_count		 = (SELECT COUNT(DISTINCT symbol) FROM portfolio_asset WHERE portfolio_name = @portfolio_name);
 
 -- Creating a temporary table with every calendar date of the simulation and a price for each calendar date, for each asset and forex pair. 
-CREATE TABLE sim_asset_1_prices AS
+CREATE TABLE sim_asset_prices AS
       SELECT date , symbol, open, high, low, close, last_close
         FROM asset_prices
-	   WHERE symbol = @asset_1;
- /*      
- 
-IF @asset_2 != '' THEN CREATE TABLE sim_asset_2_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_2) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_2);
-END IF;
+	   WHERE symbol IN (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name)
+         AND date BETWEEN @start_date AND @end_date;
 
-IF @asset_3 != '' THEN CREATE TABLE sim_asset_3_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_3) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_3);
-END IF;
-
-IF @asset_4 != '' THEN CREATE TABLE sim_asset_4_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_4) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_4);
-END IF;
-
-IF @asset_5 != '' THEN CREATE TABLE sim_asset_5_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_5) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_5);
-END IF;
-
-IF @asset_6 != '' THEN CREATE TABLE sim_asset_6_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_6) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_6);
-END IF;
-
-IF @asset_7 != '' THEN CREATE TABLE sim_asset_7_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_7) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_7);
-END IF;
-
-IF @asset_8 != '' THEN CREATE TABLE sim_asset_8_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_8) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_8);
-END IF;
-
-IF @asset_9 != '' THEN CREATE TABLE sim_asset_9_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_9) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_9);
-END IF;
-
-IF @asset_10 != '' THEN CREATE TABLE sim_asset_10_prices AS
-                             SELECT c.date , symbol, open, high, low, close,
-			                        IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-																		  (LAG(close,2) OVER (ORDER BY c.date)),
-																		  (LAG(close,3) OVER (ORDER BY c.date)),
-																		  (LAG(close,4) OVER (ORDER BY c.date)),
-																		  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-							  FROM calendar c                       
-						 LEFT JOIN  (SELECT date, symbol, open, high, low, close
-									   FROM asset_prices
-			                          WHERE symbol = @asset_10) a
-	                                     ON a.date = c.date
-	                                  WHERE c.date >= (SELECT inception_date FROM asset WHERE symbol = @asset_10);
-END IF;
-  */
 END //
 ;
 
@@ -481,18 +344,33 @@ CREATE PROCEDURE sim_table_creation() -- Creating the table and filling in date 
 BEGIN
 
 DROP TABLE IF EXISTS sim_temp; 
-DROP TABLE IF EXISTS sim_asset_1_prices2;
 
-CREATE TABLE sim_temp_a1 ( -- Temporary table for a simulation
+CREATE TABLE sim_temp ( -- Temporary table for a simulation
     date DATE PRIMARY KEY,
     portfolio_name VARCHAR(100),
     
    	a1_symbol VARCHAR(20), a1_price FLOAT, a1_forex_pair VARCHAR(10), a1_fx_rate FLOAT, a1_portfolio_price FLOAT,
     a1_amount INT, a1_amount_change INT, a1_local_value FLOAT, a1_portfolio_value FLOAT, 
-	a1_local_change_d FLOAT, a1_portfolio_change_d FLOAT,
-	
-    /*
-    a2_symbol VARCHAR(20), a2_price FLOAT, a2_forex_pair VARCHAR(10), a2_fx_rate FLOAT, a2_portfolio_price FLOAT,
+	a1_local_change_d FLOAT, a1_portfolio_change_d FLOAT, a1_allocation FLOAT);
+    
+              IF @asset_2 IN (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name)
+THEN ALTER TABLE sim_temp
+      ADD COLUMN a2_symbol VARCHAR(20),
+      ADD COLUMN a2_price FLOAT, 
+      ADD COLUMN a2_forex_pair VARCHAR(10),
+      ADD COLUMN a2_fx_rate FLOAT,
+      ADD COLUMN a2_portfolio_price FLOAT,
+      ADD COLUMN a2_amount INT, 
+      ADD COLUMN a2_amount_change INT, 
+      ADD COLUMN a2_local_value FLOAT, 
+      ADD COLUMN a2_portfolio_value FLOAT, 
+      ADD COLUMN a2_local_change_d FLOAT, 
+      ADD COLUMN a2_portfolio_change_d FLOAT,
+      ADD COLUMN a2_allocation FLOAT;
+		  END IF;
+         
+	/*
+	a2_symbol VARCHAR(20), a2_price FLOAT, a2_forex_pair VARCHAR(10), a2_fx_rate FLOAT, a2_portfolio_price FLOAT,
     a2_amount INT, a2_amount_change INT, a2_local_value FLOAT, a2_portfolio_value FLOAT, 
 	a2_local_change_d FLOAT, a2_portfolio_change_d FLOAT,
 
@@ -529,18 +407,24 @@ CREATE TABLE sim_temp_a1 ( -- Temporary table for a simulation
 	a10_local_change_d FLOAT, a10_portfolio_change_d FLOAT,
     */
 
-	p_value FLOAT,
-    
-    a1_allocation FLOAT, a2_allocation FLOAT, a3_allocation FLOAT, a4_allocation FLOAT, a5_allocation FLOAT,
-    a6_allocation FLOAT, a7_allocation FLOAT, a8_allocation FLOAT, a9_allocation FLOAT, a10_allocation FLOAT,
-    
-    -- ACCOUNT METRICS
-    usd_exposure_usd FLOAT, usd_exposure_eur FLOAT, eur_exposure FLOAT,
-    
-    buy FLOAT DEFAULT 0, sell FLOAT DEFAULT 0, transaction_costs FLOAT DEFAULT 0, interest FLOAT DEFAULT 0, 
-    deposit FLOAT DEFAULT 0, withdrawl FLOAT DEFAULT 0,tot_change FLOAT DEFAULT 0, acc_balance FLOAT DEFAULT 0, 
-    tot_balance FLOAT DEFAULT 0, leverage_rate FLOAT, tot_balance_change_d FLOAT
-);
+-- ADDING ACCOUNT METRICS
+
+ALTER TABLE sim_temp
+ ADD COLUMN p_value FLOAT,
+ ADD COLUMN usd_exposure_usd FLOAT,
+ ADD COLUMN usd_exposure_eur FLOAT,
+ ADD COLUMN eur_exposure FLOAT,
+ ADD COLUMN buy FLOAT DEFAULT 0,
+ ADD COLUMN sell FLOAT DEFAULT 0, 
+ ADD COLUMN transaction_costs FLOAT DEFAULT 0, 
+ ADD COLUMN interest FLOAT DEFAULT 0, 
+ ADD COLUMN deposit FLOAT DEFAULT 0, 
+ ADD COLUMN withdrawl FLOAT DEFAULT 0,
+ ADD COLUMN tot_change FLOAT DEFAULT 0,
+ ADD COLUMN acc_balance FLOAT DEFAULT 0,
+ ADD COLUMN tot_balance FLOAT DEFAULT 0, 
+ ADD COLUMN leverage_rate FLOAT, 
+ ADD COLUMN tot_balance_change_d FLOAT;
 
 END//
 ;
@@ -552,39 +436,40 @@ BEGIN
 -- Introducing all known data into the simulation table
 -- First the calendar dates
 
-INSERT INTO sim_temp_a1 (date)
+INSERT INTO sim_temp (date)
 	 SELECT date 
 	   FROM calendar
       WHERE date BETWEEN @start_date
-					 AND (SELECT end_date FROM asset WHERE symbol = @asset_1);
+					 AND @end_date;
 
 -- Secondly, all the lookup data and stored values
 
-CREATE TABLE sim_asset_1_prices2 LIKE sim_asset_1_prices;
-INSERT INTO sim_asset_1_prices2
-SELECT *
-FROM sim_asset_1_prices;
-
-
-UPDATE sim_temp_a1 st
+UPDATE sim_temp st
 SET 
 portfolio_name 		= 	@portfolio_name,
 a1_symbol 			= 	@asset_1,
-a1_price			= 	(SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_1); /* -- ES ESTA LÍNEA QUE TARDA!!!
+a1_price			= 	(SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_1),
 a1_forex_pair		=	IF(@a1_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
 a1_fx_rate			= 	IF( @a1_currency = @portfolio_currency, 1, (SELECT last_close FROM sim_forex_prices WHERE date = st.date)),
 a1_portfolio_price	=	CASE 
 							WHEN a1_forex_pair = CONCAT(@a1_currency, @portfolio_currency) THEN a1_price * a1_fx_rate
                             ELSE a1_price / a1_fx_rate
-						END; 
-a2_symbol 			= 	@asset_2,	
-a2_price			= 	(SELECT last_close FROM sim_asset_2_prices sap1 WHERE st.date = sap1.date),
-a2_forex_pair		=	IF(@a2_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
-a2_fx_rate			= 	IF( @a2_currency = @portfolio_currency, 1, (SELECT last_close FROM sim_forex_prices WHERE date = st.date)),
-a2_portfolio_price	=	CASE 
-							WHEN a2_forex_pair = CONCAT(@a2_currency, @portfolio_currency) THEN a2_price * a2_fx_rate
-                            ELSE a2_price / a2_fx_rate
-						END,
+						END;
+
+		 IF @asset_2 IN (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name) 
+THEN UPDATE sim_temp st
+	        SET
+				a2_symbol 			= 	@asset_2,	
+				a2_price			= 	(SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_2),
+				a2_forex_pair		=	IF(@a2_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
+				a2_fx_rate			= 	IF( @a2_currency = @portfolio_currency, 1, (SELECT last_close FROM sim_forex_prices WHERE date = st.date)),
+				a2_portfolio_price	=	CASE 
+											WHEN a2_forex_pair = CONCAT(@a2_currency, @portfolio_currency) THEN a2_price * a2_fx_rate
+											ELSE a2_price / a2_fx_rate
+										END;
+	END IF;
+/*
+
 a3_symbol 			= 	@asset_3,	
 a3_price			= 	(SELECT last_close FROM sim_asset_3_prices sap1 WHERE st.date = sap1.date),
 a3_forex_pair		=	IF(@a3_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
@@ -660,42 +545,25 @@ BEGIN
 -- INTRODUCING FIRS ROW VALUES
 UPDATE sim_temp
 SET 
-a1_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a1_allocation / 100 / a1_portfolio_price), -- CHECK AFTER CHANGES
-a2_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a2_allocation / 100 / a2_portfolio_price), -- CHECK AFTER CHANGES
-a3_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a3_allocation / 100 / a3_portfolio_price), -- CHECK AFTER CHANGES
-a4_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a4_allocation / 100 / a4_portfolio_price), -- CHECK AFTER CHANGES
-a5_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a5_allocation / 100 / a5_portfolio_price), -- CHECK AFTER CHANGES
-a6_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a6_allocation / 100 / a6_portfolio_price), -- CHECK AFTER CHANGES
-a7_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a7_allocation / 100 / a7_portfolio_price), -- CHECK AFTER CHANGES
-a8_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a8_allocation / 100 / a8_portfolio_price), -- CHECK AFTER CHANGES
-a9_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a9_allocation / 100 / a9_portfolio_price), -- CHECK AFTER CHANGES
-a10_amount 				= FLOOR(@inicial_balance * COALESCE(@p_leverage / 100 + 1,1) * @a10_allocation / 100 / a10_portfolio_price), -- CHECK AFTER CHANGES
+a1_amount 				= FLOOR(@inicial_balance * COALESCE(@leverage / 100 + 1,1) * @a1_allocation / 100 / a1_portfolio_price), -- CHECK AFTER CHANGES
 a1_amount_change		= a1_amount,
+a1_portfolio_value		= a1_amount * a1_portfolio_price
+WHERE date 				= @start_date;
+
+
+UPDATE sim_temp
+SET 
+a2_amount 				= FLOOR(@inicial_balance * COALESCE(@leverage / 100 + 1,1) * @a2_allocation / 100 / a2_portfolio_price), -- CHECK AFTER CHANGES
 a2_amount_change		= a2_amount,
-a3_amount_change		= a3_amount,
-a4_amount_change		= a4_amount,
-a5_amount_change		= a5_amount,
-a6_amount_change		= a6_amount,
-a7_amount_change		= a7_amount,
-a8_amount_change		= a8_amount,
-a9_amount_change		= a9_amount,
-a10_amount_change		= a10_amount,
-a1_portfolio_value		= a1_amount * a1_portfolio_price,
 a2_portfolio_value		= a2_amount * a2_portfolio_price,
-a3_portfolio_value		= a3_amount * a3_portfolio_price,
-a4_portfolio_value		= a4_amount * a4_portfolio_price,
-a5_portfolio_value		= a5_amount * a5_portfolio_price,
-a6_portfolio_value		= a6_amount * a6_portfolio_price,
-a7_portfolio_value		= a7_amount * a7_portfolio_price,
-a8_portfolio_value		= a8_amount * a8_portfolio_price,
-a9_portfolio_value		= a9_amount * a9_portfolio_price,
-a10_portfolio_value		= a10_amount * a10_portfolio_price,
-p_value 				= a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
-						+ a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value,
-buy 					= a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
-						+ a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value,
+
+
+p_value 				= a1_portfolio_value + a2_portfolio_value /*+ a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
+						+ a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value*/,
+buy 					= a1_portfolio_value + a2_portfolio_value /* + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
+						+ a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value*/,
 transaction_costs		= -(IF(a1_amount_change != 0, 1, 0)
-							+ IF(a2_amount_change != 0, 1, 0)
+							+ IF(a2_amount_change != 0, 1, 0)/*
 							+ IF(a3_amount_change != 0, 1, 0)
 							+ IF(a4_amount_change != 0, 1, 0)
                             + IF(a5_amount_change != 0, 1, 0)
@@ -703,29 +571,27 @@ transaction_costs		= -(IF(a1_amount_change != 0, 1, 0)
                             + IF(a7_amount_change != 0, 1, 0)
                             + IF(a8_amount_change != 0, 1, 0)
                             + IF(a9_amount_change != 0, 1, 0)
-                            + IF(a10_amount_change != 0, 1, 0)) * @p_transaction_cost,
-tot_change				= -(a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
-						 + a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value) + transaction_costs,
+                            + IF(a10_amount_change != 0, 1, 0)*/) * @p_transaction_cost,
+tot_change				= -(a1_portfolio_value + a2_portfolio_value/* + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
+						 + a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value*/) + transaction_costs,
 acc_balance				= @inicial_balance + tot_change,
 tot_balance				= p_value + acc_balance,
 leverage_rate			= p_value / tot_balance,
-a1_allocation 			= (a1_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a2_allocation 			= (a2_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a3_allocation 			= (a3_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a4_allocation 			= (a4_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a5_allocation 			= (a5_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a6_allocation 			= (a6_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a7_allocation 			= (a7_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a8_allocation 			= (a8_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a9_allocation 			= (a9_portfolio_value / (tot_balance*((@p_leverage+100)/100))),
-a10_allocation 			= (a10_portfolio_value / (tot_balance*((@p_leverage+100)/100)))
+
+a1_allocation 			= (a1_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a2_allocation 			= (a2_portfolio_value / (tot_balance*((@leverage+100)/100)))
+/*
+a3_allocation 			= (a3_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a4_allocation 			= (a4_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a5_allocation 			= (a5_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a6_allocation 			= (a6_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a7_allocation 			= (a7_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a8_allocation 			= (a8_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a9_allocation 			= (a9_portfolio_value / (tot_balance*((@leverage+100)/100))),
+a10_allocation 			= (a10_portfolio_value / (tot_balance*((@leverage+100)/100)))*/
 WHERE date 				= @start_date;
 
--- CREATE TABLE sim_looper LIKE sim_temp;
--- INSERT INTO sim_looper SELECT* FROM sim_temp;
-
 ALTER TABLE sim_temp
--- ALTER TABLE sim_looper 
 ADD INDEX idx_date(date);
 
 END //
