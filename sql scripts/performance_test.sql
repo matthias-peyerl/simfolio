@@ -39,7 +39,7 @@ BEGIN
 
 DECLARE counter INT DEFAULT 1;
 
-WHILE counter <= 25 DO
+WHILE counter <= 50 DO
 
 SET @counter = counter;
 

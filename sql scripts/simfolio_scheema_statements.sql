@@ -57,7 +57,6 @@ UPDATE calendar
 
 DROP TABLE ints;
 
-
 CREATE TABLE forex_pair (
 forex_pair varchar(20) PRIMARY KEY,
 base_currency varchar(10) NOT NULL,
@@ -140,7 +139,8 @@ CREATE TABLE forex_prices (
     high FLOAT,
 	low FLOAT,
 	close FLOAT,
-    adj_close FLOAT);
+    last_close FLOAT DEFAULT NULL);
+    
 
 CREATE TABLE econ_indicator(
 symbol VARCHAR(20) PRIMARY KEY,

@@ -24,14 +24,10 @@ CALL just_run();
 SET @portfolio_name 	= 'Standard';
 
 
-
--- Otherwise, if you want to create a new one
+-- Otherwise, if you want to create a new one or update an existing one follow these steps:
 -- 1. Setting the portfolio name
 
 SET @portfolio_name 	= CONCAT('Portfolio - ',current_timestamp());		-- Please design your own portfolio name
-SET @portfolio_currency = 'EUR';											-- Choose from 'EUR' and 'USD'
-SET @inicial_balance	= 100000;
-
 
 -- 2. Setting portfolio assets
 --    You can choose assets from the simfolio_db.asset table where you will find 20 example instruments to choose from. 
@@ -45,28 +41,24 @@ WHERE symbol IN ('IWMO.L', 'PHAU.L', 'DBZB.DE');
 SET @asset_1 = 'IWMO.L'; 					SET @asset_1_allocation = 34;
 SET @asset_2 = 'PHAU.L'; 					SET @asset_2_allocation = 33;			
 SET @asset_3 = 'DBZB.DE'; 					SET @asset_3_allocation = 33;
-SET @asset_4 = ''; 					SET @asset_4_allocation = 15;
-SET @asset_5 = ''; 					SET @asset_5_allocation = 10;
-SET @asset_6 = ''; 					SET @asset_6_allocation = 15;
-SET @asset_7 = ''; 					SET @asset_7_allocation = 5;
-SET @asset_8 = ''; 					SET @asset_8_allocation = 10;
-SET @asset_9 = ''; 					SET @asset_9_allocation = 10;
-SET @asset_10 = ''; 					SET @asset_10_allocation = 10;
+SET @asset_4 = ''; 							SET @asset_4_allocation = 15;
+SET @asset_5 = ''; 							SET @asset_5_allocation = 10;
+SET @asset_6 = ''; 							SET @asset_6_allocation = 15;
+SET @asset_7 = ''; 							SET @asset_7_allocation = 5;
+SET @asset_8 = ''; 							SET @asset_8_allocation = 10;
+SET @asset_9 = ''; 							SET @asset_9_allocation = 10;
+SET @asset_10 = ''; 						SET @asset_10_allocation = 10;
 
 
 SET @portfolio_currency 			= 'EUR';		-- Choose from 'EUR' and 'USD'
 SET @portfolio_transaction_cost 	=  1;			-- Set a realistic transaction cost for every time you trade.
-
-SET @portfolio_strategy				= 'Standard';	-- Choose from an existing strategy or create a new one further down and set it as your portfolio strategy here. 
+SET @inicial_balance				= 100000;
 
 -- --> IMPORTANT, CALL THE PARAMETERS TO BE STORED
 CALL portfolio_creation();
 CALL update_portfolio();
 
-SELECT * FROM portfolio;
-SELECT * FROM portfolio_asset WHERE portfolio_name = @portfolio_name;
 -- ---------------------------------------------------------
-
 
 -- Choose from an existing strategy via the strategy name: 
 SELECT* FROM strategy;
@@ -76,62 +68,25 @@ SET @strategy_name				= 'New name here if you want to create your own strategy' 
 
 -- Next, set the rebalancing type: 
 
-SET @rebalancing_type = 'Deviation';			-- Choose from 'Deviation', 'Period' or 'none'
+SET @rebalancing_type 	= 'Deviation';			-- Choose from 'Deviation', 'Period' or 'none'
 
 -- If you chose Deviation as rebalancing type:
-SET @rel_rebalancing = 10;		-- The relative percentage that an asset can deviate fro it's target allocation. 
-SET @min_rebalancing = 1 ;		-- The minimum deviation that would override the relative rebalancing if it is not reached. 
+SET @rel_rebalancing 	= 10;		-- The relative percentage that an asset can deviate fro it's target allocation. 
+SET @min_rebalancing 	= 1 ;		-- The minimum deviation that would override the relative rebalancing if it is not reached. 
 
 -- If you chose Period as rebalancing type:
-SET @period = 'monthly';		-- Chose from daily, weekly, monthly, quarterly, semi-annually and annually
+SET @period 			= 'monthly';		-- Chose from daily, weekly, monthly, quarterly, semi-annually and annually
 
 -- Choose the portfolio leverage you want to apply, a leverage of 100 means twice the amount in your account will be bought into the portfolio. 
-SET @leverage = 100; 
-SET @lev_rebalancing = 5;
+SET @leverage 			= 100; 
+SET @lev_rebalancing 	= 5;
 
 CALL strategy_creation();		-- Use this procedure to create a new strategy
 CALL update_strategy();			-- Use this procedure to update an existing strategy
 
 -- ____________________________________________________________________________
-UPDATE sim_temp st
-SET
-a1_symbol 			= 	@asset_1,
-a1_price			= 	COALESCE((SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_1),1),
-a1_forex_pair		=	IF(@a1_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
-a1_fx_rate			= 	IF( @a1_currency = @portfolio_currency, 1, (SELECT last_close FROM sim_forex_prices WHERE date = st.date)),
-a1_portfolio_price	=	CASE 
-							WHEN a1_forex_pair = CONCAT(@a1_currency, @portfolio_currency) THEN a1_price * a1_fx_rate
-                            ELSE a1_price / a1_fx_rate
-						END
-WHERE st.date = adddate(@start_date, 1);				
-
-SELECT* FROM sim_temp
-WHERE date = adddate(@start_date, 1);				
 
 
-
-SELECT adddate(@start_date, 1);
-
-SELECT @inicial_balance;
-SELECT @leverage;
-SELECT @a1_allocation;
-
-SELECT *
-FROM strategy;
-SELECT leverage FROM strategy WHERE strategy_name = @portfolio_strategy;
-
-SELECT *
-FROM sim_looper;
-DROP TABLE sim_looper;
-
-SELECT* FROM sim_temp;
-SELECT* FROM sim_forex_prices;
-SELECT* FROM portfolio_simulation;
-
-CALL inception_update();
-CALL end_date_update();		
-CALL last_close_price_update();
-CALL load_basic_setting();				
 CALL prepare_sim_variables();			
 CALL prepare_sim_forex_data();			
 CALL prepare_sim_asset_data();			
@@ -140,7 +95,6 @@ CALL first_row_data(); 			-- very long
 CALL sim_relative_looper();
 CALL sim_final_data_population();
 
-DROP TABLE sim_looper;
 
 SELECT @portfolio_name;
 SELECT *
