@@ -1,6 +1,3 @@
-SELECT @rebalancing_type;
-DROP PROCEDURE sim_final_data_population;
-
 -- The procedure to be loaded in the beginning, when starting up the db:
 DELIMITER //
 CREATE PROCEDURE load_basics()
@@ -10,6 +7,7 @@ BEGIN
 	SET @batch_size		 		=	10;
 	SET @interest_augment		=	1;			-- INTEREST AUGMENTATION OF RFR + _% -- out of sight, because its explenation is out of scope
     SET @portfolio_name			= 	'Standard';
+    set @strategy_id			=	1;
     
     -- These procedures make sure all tables have their relevant data in place
     CALL inception_update();
@@ -19,6 +17,28 @@ BEGIN
             
 END //
 ;
+
+DELIMITER //
+CREATE PROCEDURE run_simulation()
+BEGIN
+
+CALL prepare_sim_variables();			
+CALL prepare_sim_forex_data();			
+CALL sim_table_creation();
+
+IF @rebalancing_type = 'Period'
+	THEN CALL first_periodic_data(); 		
+		 CALL sim_periodic_looper(@period);
+    ELSE CALL first_row_data();
+		 CALL sim_relative_looper();
+END IF;		
+
+CALL sim_final_data_population;
+CALL performance_metrics_calculation();
+
+END //
+
+
 
 
 DELIMITER //
@@ -67,7 +87,6 @@ DROP TABLE asset_prices_update;
 
 END //
 ;
-
 
 DELIMITER //
 CREATE PROCEDURE last_close_forex_update()
@@ -201,90 +220,54 @@ If it's not taken it goes on to create it and the respective assets and allocati
 making sure that no assets are stored for a portfolio t
 */
 DELIMITER //
-CREATE PROCEDURE portfolio_creation()
+CREATE PROCEDURE portfolio_change()
 BEGIN
 
-    IF @portfolio_name IN 	(SELECT portfolio_name FROM portfolio) 
-                            THEN SELECT('Portfolio name taken') MESSAGE_FOR_YOU;
-	ELSE      INSERT INTO 	portfolio (portfolio_name, portfolio_currency, portfolio_strategy, portfolio_transaction_cost)
-				   VALUES 	(@portfolio_name, @portfolio_currency, @portfolio_strategy, @portfolio_transaction_cost);
-			       DELETE
-                     FROM	portfolio_asset
-				    WHERE	portfolio_name = @portfolio_name;
+
+IF @portfolio_name IN (SELECT portfolio_name FROM portfolio) 
+                            
+				        THEN SELECT('Portfolio name taken') MESSAGE_FOR_YOU;
+					    ELSE SET @portfolio_id = (SELECT max(portfolio_id) +1 FROM portfolio),
+							     @strategy_id  = (SELECT strategy_id FROM strategy WHERE strategy_name = @strategy_name);
+							 INSERT INTO 	portfolio (portfolio_id, portfolio_name, portfolio_currency, portfolio_strategy, portfolio_transaction_cost)
+							      VALUES 	(@portfolio_id, @portfolio_name, @portfolio_currency, @strategy_id, @portfolio_transaction_cost);
 					
-                 IF 		@asset_1 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_1, @asset_1_allocation);
-                 END IF;
-                 IF 		@asset_2 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_2, @asset_2_allocation);
-                 END IF;
-                 IF 		@asset_3 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_3, @asset_3_allocation);
-                 END IF;
-                 IF 		@asset_4 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_4, @asset_4_allocation);
-                 END IF;
-                 IF 		@asset_5 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_5, @asset_5_allocation);
-                 END IF;
-                 IF 		@asset_6 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_6, @asset_6_allocation);
-                 END IF;
-                 IF 		@asset_7 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_7, @asset_7_allocation);
-                 END IF;
-                 IF 		@asset_8 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_8, @asset_8_allocation);
-                 END IF;
-                 IF 		@asset_9 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_9, @asset_9_allocation);
-                 END IF;
-                 IF 		@asset_10 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_10, @asset_10_allocation);
-                 END IF;
-	END IF;               
+								 IF 		@asset_1 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_1, @asset_1_allocation);
+								 END IF;
+								 IF 		@asset_2 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_2, @asset_2_allocation);
+								 END IF;
+								 IF 		@asset_3 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_3, @asset_3_allocation);
+								 END IF;
+								 IF 		@asset_4 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_4, @asset_4_allocation);
+								 END IF;
+								 IF 		@asset_5 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_5, @asset_5_allocation);
+								 END IF;
+								 IF 		@asset_6 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_6, @asset_6_allocation);
+								 END IF;
+								 IF 		@asset_7 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_7, @asset_7_allocation);
+								 END IF;
+								 IF 		@asset_8 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_8, @asset_8_allocation);
+								 END IF;
+								 IF 		@asset_9 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_9, @asset_9_allocation);
+								 END IF;
+								 IF 		@asset_10 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_10, @asset_10_allocation);
+								 END IF;
+			END IF;
+              
 END//
 ;
 
 DELIMITER //
-CREATE PROCEDURE update_portfolio()
+CREATE PROCEDURE strategy_change()
 BEGIN
 
-    IF @portfolio_name IN 	(SELECT portfolio_name FROM portfolio) 
-					 THEN	 UPDATE portfolio
-							    SET	portfolio_currency 			= @portfolio_currency,
-									portfolio_strategy			= @portfolio_strategy,
-                                    portfolio_transaction_cost	= @portfolio_transaction_cost								
-							  WHERE portfolio_name = @portfolio_name;
-                   
-							 DELETE
-							   FROM	portfolio_asset
-							  WHERE	portfolio_name = @portfolio_name;
-					
-                 IF 		@asset_1 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_1, @asset_1_allocation);
-                 END IF;
-                 IF 		@asset_2 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_2, @asset_2_allocation);
-                 END IF;
-                 IF 		@asset_3 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_3, @asset_3_allocation);
-                 END IF;
-                 IF 		@asset_4 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_4, @asset_4_allocation);
-                 END IF;
-                 IF 		@asset_5 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_5, @asset_5_allocation);
-                 END IF;
-                 IF 		@asset_6 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_6, @asset_6_allocation);
-                 END IF;
-                 IF 		@asset_7 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_7, @asset_7_allocation);
-                 END IF;
-                 IF 		@asset_8 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_8, @asset_8_allocation);
-                 END IF;
-                 IF 		@asset_9 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_9, @asset_9_allocation);
-                 END IF;
-                 IF 		@asset_10 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_name, @asset_10, @asset_10_allocation);
-                 END IF;
-                 
-	END IF;               
-END//
-;
 
-
-DELIMITER //
-CREATE PROCEDURE strategy_creation()
-BEGIN
 
     IF @strategy_name IN 	(SELECT strategy_name FROM strategy) 
                             THEN SELECT('Strategy name taken') MESSAGE_FOR_YOU;
-	ELSE     INSERT INTO 	strategy (strategy_name, rebalancing_type, leverage, lev_rebalancing)
-			      VALUES 	(@strategy_name, @rebalancing_type, @leverage, @leverage_rebalancing);
+	ELSE      		 SET 	@strategy_id = (SELECT max(strategy_id) + 1 FROM strategy);
+			 INSERT INTO 	strategy (strategy_id, strategy_name, rebalancing_type, leverage, lev_rebalancing)
+			      VALUES 	(@strategy_id, @strategy_name, @rebalancing_type, @leverage, @leverage_rebalancing);
 			      				
                       IF	@rebalancing_type 		= 'deviation'
                     THEN	UPDATE strategy
@@ -302,38 +285,6 @@ BEGIN
 END//
 ;
 
-
-DELIMITER //
-CREATE PROCEDURE update_strategy()
-BEGIN
-
-    IF @strategy_name 	    IN 	(SELECT strategy_name FROM strategy) 
-				 THEN   UPDATE  strategy
-						   SET  rebalancing_type 		= @rebalancing_type, 
-								leverage		 		= @leverage,
-                                lev_rebalancing			= @lev_rebalancing	
-						WHERE   strategy_name 			= @strategy_name;
-    
-						   IF	@rebalancing_type 		= 'deviation'
-						 THEN	UPDATE strategy
-							    SET rel_rebalancing 	= @rel_rebalancing,		
-							       min_rebalancing 		= @min_rebalancing
-							    WHERE strategy_name   	= @strategy_name;
-					   END IF;
-                  
-						  IF   @rebalancing_type 		= 'period'
-						THEN   UPDATE strategy
-							   SET period 	  			= @period,
-                                   rel_rebalancing		= NULL,
-								   min_rebalancing		= NULL
-							   WHERE strategy_name   	= @strategy_name;
-					   END IF;  
-	ELSE SELECT "Strategy name doesn't exist";
-    END IF;               
-END//
-;
-
-
 DELIMITER //
 -- Creating a Procedure to load all the variables 
 CREATE PROCEDURE prepare_sim_variables()
@@ -342,40 +293,51 @@ BEGIN
 -- First we load the all the variables according to the chosen portfolio, 
 -- in case it was not newly created they would not have been loaded yet. 
 
-SET     					-- 	Setting the variables from tyhe portfolio table
+    IF  (SELECT COUNT(*) FROM simulation) = 0
+        THEN SET @sim_id = 1;
+        ELSE SET @sim_id = (SELECT max(sim_id) + 1 FROM simulation);
+END IF;
+
+SET 
+@sim_timestamp 				= current_timestamp();
+
+SET     					-- 	Setting the variables from the portfolio table
 @portfolio_currency 		= 	(SELECT portfolio_currency FROM portfolio WHERE portfolio_name = @portfolio_name),
 @portfolio_transaction_cost	=	(SELECT portfolio_transaction_cost FROM portfolio WHERE portfolio_name = @portfolio_name),
-@portfolio_strategy			=	(SELECT portfolio_strategy FROM portfolio WHERE portfolio_name = @portfolio_name);
+@portfolio_strategy			=	(SELECT portfolio_strategy FROM portfolio WHERE portfolio_name = @portfolio_name),
+@portfolio_id				=	(SELECT portfolio_id FROM portfolio WHERE portfolio_name = @portfolio_name);
+
 
 SET							-- 	Setting the variables from the strategy table
-@rebalancing_type			=	(SELECT rebalancing_type FROM strategy WHERE strategy_name = @portfolio_strategy),
-@period						=	(SELECT period FROM strategy WHERE strategy_name = @portfolio_strategy),	
-@leverage					=	(SELECT leverage FROM strategy WHERE strategy_name = @portfolio_strategy),
-@lev_rebalancing			=	(SELECT lev_rebalancing	FROM strategy WHERE strategy_name = @portfolio_strategy),	
-@min_rebalancing			=	(SELECT min_rebalancing	FROM strategy WHERE strategy_name = @portfolio_strategy),
-@rel_rebalancing			=	(SELECT rel_rebalancing	FROM strategy WHERE strategy_name = @portfolio_strategy);
+@strategy_id				=	(SELECT portfolio_strategy FROM portfolio WHERE portfolio_name = @portfolio_name),
+@rebalancing_type			=	(SELECT rebalancing_type FROM strategy WHERE strategy_id = @portfolio_strategy),
+@period						=	(SELECT period FROM strategy WHERE strategy_id = @portfolio_strategy),	
+@leverage					=	(SELECT leverage FROM strategy WHERE strategy_id = @portfolio_strategy),
+@lev_rebalancing			=	(SELECT lev_rebalancing	FROM strategy WHERE strategy_id = @portfolio_strategy),	
+@min_rebalancing			=	(SELECT min_rebalancing	FROM strategy WHERE strategy_id = @portfolio_strategy),
+@rel_rebalancing			=	(SELECT rel_rebalancing	FROM strategy WHERE strategy_id = @portfolio_strategy);
 
 SET							-- 	Setting the variables from the portfolio assets table. Assets will be named 1-10 according to their allocation. 
-@asset_1 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
-@asset_2 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 1),
-@asset_3 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 2),
-@asset_4 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 3),
-@asset_5 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 4),
-@asset_6 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 5),
-@asset_7 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 6),
-@asset_8 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 7),
-@asset_9 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 8),
-@asset_10		 		= (SELECT symbol FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 9),
-@asset_1_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
-@asset_2_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 1),
-@asset_3_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 2),
-@asset_4_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 3),
-@asset_5_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 4),
-@asset_6_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 5),
-@asset_7_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 6),
-@asset_8_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 7),
-@asset_9_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 8),
-@asset_10_allocation	= (SELECT allocation FROM portfolio_asset WHERE portfolio_name = @portfolio_name ORDER BY allocation DESC LIMIT 1 OFFSET 9),
+@asset_1 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
+@asset_2 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 1),
+@asset_3 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 2),
+@asset_4 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 3),
+@asset_5 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 4),
+@asset_6 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 5),
+@asset_7 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 6),
+@asset_8 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 7),
+@asset_9 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 8),
+@asset_10		 		= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 9),
+@asset_1_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
+@asset_2_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 1),
+@asset_3_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 2),
+@asset_4_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 3),
+@asset_5_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 4),
+@asset_6_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 5),
+@asset_7_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 6),
+@asset_8_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 7),
+@asset_9_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 8),
+@asset_10_allocation	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 9),
 @a1_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_1), 
 @a2_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_2),
 @a3_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_3),
@@ -391,14 +353,13 @@ SET							-- 	Setting the variables from the portfolio assets table. Assets will
 					  FROM asset
 					 WHERE symbol IN (SELECT symbol 
                                         FROM portfolio_asset 
-									   WHERE portfolio_name = @portfolio_name));
+									   WHERE portfolio_id = @portfolio_id));
  
   SET @end_date =  (SELECT MIN(end_date)
 					  FROM asset
 					 WHERE symbol IN (SELECT symbol 
                                         FROM portfolio_asset 
-									   WHERE portfolio_name = @portfolio_name));
-
+									   WHERE portfolio_id = @portfolio_id));
 
 END //
 ;
@@ -440,12 +401,19 @@ DELIMITER //
 CREATE PROCEDURE sim_table_creation() -- Creating the table and filling in date and price data 
 BEGIN
 
+INSERT INTO simulation (sim_id, timestamp, portfolio_id, strategy_id, start_date, end_date)
+VALUES (@sim_id, @sim_timestamp, @portfolio_id, @strategy_id, @start_date, @end_date);
+
 DROP TABLE IF EXISTS sim_temp; 
 
 CREATE TABLE sim_temp ( -- Temporary table for a simulation
-    date DATE PRIMARY KEY,
-    portfolio_name VARCHAR(100),
+    sim_id INT NULL,
+    portfolio_id VARCHAR(100) NULL,
+    strategy_id VARCHAR(100) NULL,
+    sim_timestamp TIMESTAMP NULL,
     
+    date DATE PRIMARY KEY,
+        
    	a1_symbol VARCHAR(20), a1_price FLOAT DEFAULT 1, a1_forex_pair VARCHAR(10), a1_fx_rate FLOAT, a1_portfolio_price FLOAT,
     a1_amount INT DEFAULT 0, a1_amount_change INT, a1_local_value FLOAT, a1_portfolio_value FLOAT, 
 	a1_local_change_d FLOAT, a1_portfolio_change_d FLOAT,
@@ -517,7 +485,6 @@ CREATE TABLE sim_temp ( -- Temporary table for a simulation
 END//
 ;
 
-
 DELIMITER //
 CREATE PROCEDURE first_row_data()
 BEGIN
@@ -533,7 +500,11 @@ INSERT INTO sim_temp (date)
 -- Secondly, all the lookup data and stored values
 UPDATE sim_temp st
 SET
-portfolio_name 		= 	@portfolio_name,
+sim_id 				= 	@sim_id,
+portfolio_id 		=	@portfolio_id,
+strategy_id 		= 	@strategy_id,
+sim_timestamp		=	@sim_timestamp,    
+
 a1_symbol 			= 	@asset_1,
 a1_price			= 	COALESCE((SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_1),1),
 a1_forex_pair		=	IF(@a1_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
@@ -693,6 +664,158 @@ ADD INDEX idx_date(date);
 END //
 ;
 
+DELIMITER //
+CREATE PROCEDURE performance_metrics_calculation()
+BEGIN
+INSERT INTO simulation_data
+SELECT* FROM portfolio_simulation;
+
+INSERT INTO sim_performance_monthly (sim_id, month, year)
+	 SELECT @sim_id, month, year
+       FROM (SELECT DISTINCT CONCAT(year(date), '-', month(date)), 
+							 month(date) AS month, 
+						     year(date) AS year
+					    FROM portfolio_simulation) t2;
+
+UPDATE sim_performance_monthly
+SET sim_id 	      = @sim_id,
+    period_return = (SELECT (t2.end_value/t1.start_value-1)*100
+				    FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
+							FROM portfolio_simulation
+							WHERE month(date) = sim_performance_monthly.month -- p_sim_performance_m.month
+							AND year(date)=	sim_performance_monthly.year
+							ORDER BY date ASC
+							LIMIT 1) t1 
+					JOIN
+					(SELECT date, tot_balance AS end_value
+					FROM portfolio_simulation
+							WHERE month(date) = sim_performance_monthly.month -- p_sim_performance_m.month
+							AND year(date)=	sim_performance_monthly.year
+							ORDER BY date DESC
+							LIMIT 1) t2),                          
+    period_rfr   = (SELECT AVG(last_rate)/12*100
+					FROM econ_indicator_values t1
+					WHERE month(date) = sim_performance_monthly.month -- p_sim_performance_m.month
+					AND year(date)=	sim_performance_monthly.year),                 
+	maximum_dd    = (SELECT min(dd)*100 
+					   FROM (SELECT date, 
+						   		    tot_balance, 
+								    max(tot_balance) OVER (ORDER BY date) AS max_value, 
+								    (tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+						     FROM portfolio_simulation
+						     WHERE tot_balance IS NOT NULL
+						     AND month(date) = sim_performance_monthly.month
+						     AND year(date)  =	sim_performance_monthly.year) dd_series),
+	standard_dev  = (SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(t1.date)) 
+					FROM portfolio_simulation t1
+					INNER JOIN (SELECT date, is_weekday
+								FROM calendar c) t2
+					ON t2.date = t1.date
+					WHERE month(t1.date) = sim_performance_monthly.month --  p_sim_performance_m.month
+					AND year(t1.date)=	sim_performance_monthly.year
+					AND is_weekday = 1),
+	var			  = (SELECT VARIANCE(tot_balance_change_d/100)
+					FROM portfolio_simulation
+					WHERE month(date) = sim_performance_monthly.month --  p_sim_performance_m.month
+					AND year(date)=	sim_performance_monthly.year),
+	sharp_ratio   = (period_return - period_rfr) / standard_dev,
+    sortino_ratio = (period_return - period_rfr) / 
+					(SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+					FROM portfolio_simulation
+					WHERE month(date) = sim_performance_monthly.month --  p_sim_performance_m.month
+					AND year(date)=	sim_performance_monthly.year
+					AND tot_balance_change_d < 0) 
+WHERE sim_id = @sim_id;
+
+
+INSERT INTO sim_performance_yearly (sim_id, year)
+	 SELECT @sim_id, YEAR(date) AS year
+	   FROM portfolio_simulation
+   GROUP BY year(date)
+	 HAVING COUNT(DISTINCT MONTH(date)) = 12;
+
+UPDATE sim_performance_yearly
+   SET 	period_return = (SELECT (t2.end_value/t1.start_value-1)*100
+					       FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
+							       FROM portfolio_simulation
+								  WHERE year(date) = sim_performance_yearly.year
+							   ORDER BY date ASC
+								  LIMIT 1) t1 
+						   JOIN  (SELECT date, 
+									   tot_balance AS end_value
+								    FROM portfolio_simulation
+								   WHERE year(date) = sim_performance_yearly.year
+							    ORDER BY date DESC
+								   LIMIT 1) t2),   
+		period_rfr    = (SELECT AVG(last_rate)
+						   FROM econ_indicator_values t1
+						  WHERE year(t1.date) = sim_performance_yearly.year),
+		maximum_dd    = (SELECT min(dd) * 100
+						   FROM 	(SELECT date, 
+											tot_balance, 
+											max(tot_balance) OVER (ORDER BY date) AS max_value, 
+											(tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+									  FROM 	portfolio_simulation
+									 WHERE 	tot_balance IS NOT NULL
+									   AND 	year(date) = sim_performance_yearly.year) dd_series),
+		standard_dev  = (SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+						   FROM portfolio_simulation
+						  WHERE tot_balance IS NOT NULL
+						    AND year(date)=	sim_performance_yearly.year),
+		sharp_ratio   = (period_return - period_rfr) / standard_dev,
+		sortino_ratio = (period_return - period_rfr) / 
+						(SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+					       FROM portfolio_simulation
+						  WHERE year(date)= sim_performance_yearly.year
+						    AND tot_balance_change_d < 0)
+WHERE sim_id = @sim_id;                        
+                        
+         
+UPDATE simulation
+   SET tot_return 					=	((SELECT tot_balance 
+										    FROM portfolio_simulation 
+										   WHERE date = @end_date) / @inicial_balance -1) *100,
+	   medium_annual_return 		=	 (SELECT AVG(period_return)
+									        FROM sim_performance_yearly
+										   WHERE sim_id = @sim_id),
+	   medium_rfr 					=	 (SELECT AVG(last_rate)
+										    FROM econ_indicator_values
+										   WHERE date BETWEEN @start_date AND @end_date),
+	   maximum_dd 					=	 (SELECT min(dd) * 100
+										    FROM (SELECT date, 
+														tot_balance, 
+														max(tot_balance) OVER (ORDER BY date) AS max_value, 
+														(tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+												   FROM portfolio_simulation
+												  WHERE tot_balance IS NOT NULL) dd_series),
+	   standard_dev_annual_mean 	=	 (SELECT AVG(standard_dev)
+									        FROM sim_performance_yearly
+										   WHERE sim_id = @sim_id),
+	   sharp_ratio_annual_mean 		=	 (SELECT AVG(sharp_ratio)
+									        FROM sim_performance_yearly
+										   WHERE sim_id = @sim_id),
+	   sortino_ratio_annual_mean	= 	 (SELECT AVG(sortino_ratio)
+									        FROM sim_performance_yearly
+										   WHERE sim_id = @sim_id)
+WHERE sim_id = @sim_id;                             
+
+SELECT* FROM simulation;
+
+SELECT 'SIMULATION RESULTS' AS 'SIMULATION', 
+	   sim_id AS Simulation_ID, 
+       start_date AS 'Start', 
+       end_date AS 'End', 
+       CONCAT(ROUND(tot_return, 2),'%') AS 'Total Return',
+       CONCAT(ROUND(medium_annual_return, 2),'%') AS 'Medium Annual Return',
+       CONCAT(ROUND(maximum_dd, 2),'%') AS 'Maximum Drawdown',
+       ROUND(standard_dev_annual_mean, 2) AS 'Standard Deviation',
+       ROUND(sharp_ratio_annual_mean, 2) AS 'Sharp Ratio',
+       ROUND(sortino_ratio_annual_mean, 2) AS 'Sortino Ratio'
+  FROM simulation
+ WHERE sim_id = @sim_id;
+
+END//
+;
 
 DELIMITER //
 CREATE PROCEDURE sim_relative_looper() -- Creating the portfolio simulation day by day
@@ -731,7 +854,11 @@ INSERT INTO sim_looper (date)
 -- INSERT KNOWN LOOKUP DATA
 UPDATE sim_looper st
 SET
-portfolio_name 		= 	@portfolio_name,
+sim_id 				= 	@sim_id,
+portfolio_id 		=	@portfolio_id,
+strategy_id 		= 	@strategy_id,
+sim_timestamp		=	@sim_timestamp,    
+
 a1_symbol 			= 	@asset_1,
 a1_price			= 	COALESCE((SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_1),1),
 a1_forex_pair		=	IF(@a1_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
@@ -1038,6 +1165,354 @@ OR date > @end_date;
 END //
 ;
 
+DELIMITER //
+CREATE PROCEDURE sim_final_data_population() -- Filling the table with the remaining data based on the simulation data
+BEGIN
+
+DROP TABLE IF EXISTS portfolio_simulation;
+
+UPDATE sim_temp st
+SET
+
+a1_local_value 		= a1_price * a1_amount,
+a2_local_value 		= a2_price * a2_amount,
+a3_local_value 		= a3_price * a3_amount,
+a4_local_value 		= a4_price * a4_amount,
+a5_local_value 		= a5_price * a5_amount,
+a6_local_value 		= a6_price * a6_amount,
+a7_local_value 		= a7_price * a7_amount,
+a8_local_value 		= a8_price * a8_amount,
+a9_local_value 		= a9_price * a9_amount,
+a10_local_value 	= a10_price * a10_amount,
+
+usd_exposure_usd	= IF(@a1_currency = 'USD', a1_local_value, 0)
+					+ IF(@a2_currency = 'USD', a2_local_value, 0)
+                    + IF(@a3_currency = 'USD', a3_local_value, 0)
+                    + IF(@a4_currency = 'USD', a4_local_value, 0)
+                    + IF(@a5_currency = 'USD', a5_local_value, 0)
+                    + IF(@a6_currency = 'USD', a6_local_value, 0)
+                    + IF(@a7_currency = 'USD', a7_local_value, 0)
+                    + IF(@a8_currency = 'USD', a8_local_value, 0)
+                    + IF(@a9_currency = 'USD', a9_local_value, 0)
+                    + IF(@a10_currency = 'USD', a10_local_value, 0),
+
+
+-- ----------------- CAMBIAR DE NUEVO --> sim_forex_prices --> forex_prices
+usd_exposure_eur	= usd_exposure_usd / (SELECT last_close FROM sim_forex_prices WHERE forex_pair = 'EURUSD' AND date = st.date),
+
+eur_exposure		= IF(@a1_currency = 'EUR', a1_local_value, 0)
+					+ IF(@a2_currency = 'EUR', a2_local_value, 0)
+                    + IF(@a3_currency = 'EUR', a3_local_value, 0)
+                    + IF(@a4_currency = 'EUR', a4_local_value, 0)
+                    + IF(@a5_currency = 'EUR', a5_local_value, 0)
+                    + IF(@a6_currency = 'EUR', a6_local_value, 0)
+                    + IF(@a7_currency = 'EUR', a7_local_value, 0)
+                    + IF(@a8_currency = 'EUR', a8_local_value, 0)
+                    + IF(@a9_currency = 'EUR', a9_local_value, 0)
+                    + IF(@a10_currency = 'EUR', a10_local_value, 0);
+
+   IF  @rebalancing_type = 'Period'
+ THEN  ALTER TABLE sim_temp
+ 	   DROP COLUMN reb_trigger_a1,
+       DROP COLUMN reb_trigger_a2,
+       DROP COLUMN reb_trigger_a3,
+       DROP COLUMN reb_trigger_a4,
+       DROP COLUMN reb_trigger_a5,
+       DROP COLUMN reb_trigger_a6,
+       DROP COLUMN reb_trigger_a7,
+       DROP COLUMN reb_trigger_a8,
+       DROP COLUMN reb_trigger_a9,
+       DROP COLUMN reb_trigger_a10;
+END IF;
+
+CREATE TABLE portfolio_simulation LIKE sim_temp;     
+
+INSERT INTO portfolio_simulation
+SELECT * FROM sim_temp;             
+
+UPDATE portfolio_simulation t1 
+  JOIN (SELECT 
+		date, 
+		tot_balance,
+		LAG(tot_balance,1) OVER (ORDER BY date) AS prev_tot_balance_1d
+  FROM portfolio_simulation) t2
+    ON t1.date = t2.date
+   SET t1.tot_balance_change_d = ((t1.tot_balance - t2.prev_tot_balance_1d) / t2.prev_tot_balance_1d) * 100
+ WHERE t1.date != @start_date;
+
+
+IF @asset_1 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a1_price, 
+					LAG(a1_price,1) OVER (ORDER BY date) AS a1_prev_price_1d, 
+					a1_portfolio_price,
+					LAG(a1_portfolio_price,1) OVER (ORDER BY date) AS a1_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a1_local_change_d 		= ((t1.a1_price - t2.a1_prev_price_1d) / t2.a1_prev_price_1d) * 100,
+		a1_portfolio_change_d 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_1d) / t2.a1_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a1_symbol				=	'None',
+			a1_price				=	0,
+			a1_forex_pair			=	'None',
+			a1_fx_rate				=	0,
+			a1_portfolio_price		=	0,
+			a1_amount				=	0,
+			a1_amount_change		=	0,
+			a1_local_value			=	0,
+			a1_portfolio_value		=	0,
+			a1_local_change_d		=	0,
+			a1_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_2 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a2_price, 
+					LAG(a2_price,1) OVER (ORDER BY date) AS a2_prev_price_1d, 
+					a2_portfolio_price,
+					LAG(a2_portfolio_price,1) OVER (ORDER BY date) AS a2_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a2_local_change_d 		= ((t1.a2_price - t2.a2_prev_price_1d) / t2.a2_prev_price_1d) * 100,
+		a2_portfolio_change_d 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_1d) / t2.a2_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a2_symbol				=	'None',
+			a2_price				=	0,
+			a2_forex_pair			=	'None',
+			a2_fx_rate				=	0,
+			a2_portfolio_price		=	0,
+			a2_amount				=	0,
+			a2_amount_change		=	0,
+			a2_local_value			=	0,
+			a2_portfolio_value		=	0,
+			a2_local_change_d		=	0,
+			a2_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_3 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a3_price, 
+					LAG(a3_price,1) OVER (ORDER BY date) AS a3_prev_price_1d, 
+					a3_portfolio_price,
+					LAG(a3_portfolio_price,1) OVER (ORDER BY date) AS a3_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a3_local_change_d 		= ((t1.a3_price - t2.a3_prev_price_1d) / t2.a3_prev_price_1d) * 100,
+		a3_portfolio_change_d 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_1d) / t2.a3_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a3_symbol				=	'None',
+			a3_price				=	0,
+			a3_forex_pair			=	'None',
+			a3_fx_rate				=	0,
+			a3_portfolio_price		=	0,
+			a3_amount				=	0,
+			a3_amount_change		=	0,
+			a3_local_value			=	0,
+			a3_portfolio_value		=	0,
+			a3_local_change_d		=	0,
+			a3_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_4 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a4_price, 
+					LAG(a4_price,1) OVER (ORDER BY date) AS a4_prev_price_1d, 
+					a4_portfolio_price,
+					LAG(a4_portfolio_price,1) OVER (ORDER BY date) AS a4_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a4_local_change_d 		= ((t1.a4_price - t2.a4_prev_price_1d) / t2.a4_prev_price_1d) * 100,
+		a4_portfolio_change_d 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_1d) / t2.a4_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a4_symbol				=	'None',
+			a4_price				=	0,
+			a4_forex_pair			=	'None',
+			a4_fx_rate				=	0,
+			a4_portfolio_price		=	0,
+			a4_amount				=	0,
+			a4_amount_change		=	0,
+			a4_local_value			=	0,
+			a4_portfolio_value		=	0,
+			a4_local_change_d		=	0,
+			a4_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_5 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a5_price, 
+					LAG(a5_price,1) OVER (ORDER BY date) AS a5_prev_price_1d, 
+					a5_portfolio_price,
+					LAG(a5_portfolio_price,1) OVER (ORDER BY date) AS a5_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a5_local_change_d 		= ((t1.a5_price - t2.a5_prev_price_1d) / t2.a5_prev_price_1d) * 100,
+		a5_portfolio_change_d 	= ((t1.a5_portfolio_price - t2.a5_prev_portfolio_price_1d) / t2.a5_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a5_symbol				=	'None',
+			a5_price				=	0,
+			a5_forex_pair			=	'None',
+			a5_fx_rate				=	0,
+			a5_portfolio_price		=	0,
+			a5_amount				=	0,
+			a5_amount_change		=	0,
+			a5_local_value			=	0,
+			a5_portfolio_value		=	0,
+			a5_local_change_d		=	0,
+			a5_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_6 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a6_price, 
+					LAG(a6_price,1) OVER (ORDER BY date) AS a6_prev_price_1d, 
+					a6_portfolio_price,
+					LAG(a6_portfolio_price,1) OVER (ORDER BY date) AS a6_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a6_local_change_d 		= ((t1.a6_price - t2.a6_prev_price_1d) / t2.a6_prev_price_1d) * 100,
+		a6_portfolio_change_d 	= ((t1.a6_portfolio_price - t2.a6_prev_portfolio_price_1d) / t2.a6_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a6_symbol				=	'None',
+			a6_price				=	0,
+			a6_forex_pair			=	'None',
+			a6_fx_rate				=	0,
+			a6_portfolio_price		=	0,
+			a6_amount				=	0,
+			a6_amount_change		=	0,
+			a6_local_value			=	0,
+			a6_portfolio_value		=	0,
+			a6_local_change_d		=	0,
+			a6_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_7 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a7_price, 
+					LAG(a7_price,1) OVER (ORDER BY date) AS a7_prev_price_1d, 
+					a7_portfolio_price,
+					LAG(a7_portfolio_price,1) OVER (ORDER BY date) AS a7_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a7_local_change_d 		= ((t1.a7_price - t2.a7_prev_price_1d) / t2.a7_prev_price_1d) * 100,
+		a7_portfolio_change_d 	= ((t1.a7_portfolio_price - t2.a7_prev_portfolio_price_1d) / t2.a7_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a7_symbol				=	'None',
+			a7_price				=	0,
+			a7_forex_pair			=	'None',
+			a7_fx_rate				=	0,
+			a7_portfolio_price		=	0,
+			a7_amount				=	0,
+			a7_amount_change		=	0,
+			a7_local_value			=	0,
+			a7_portfolio_value		=	0,
+			a7_local_change_d		=	0,
+			a7_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_8 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a8_price, 
+					LAG(a8_price,1) OVER (ORDER BY date) AS a8_prev_price_1d, 
+					a8_portfolio_price,
+					LAG(a8_portfolio_price,1) OVER (ORDER BY date) AS a8_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a8_local_change_d 		= ((t1.a8_price - t2.a8_prev_price_1d) / t2.a8_prev_price_1d) * 100,
+		a8_portfolio_change_d 	= ((t1.a8_portfolio_price - t2.a8_prev_portfolio_price_1d) / t2.a8_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a8_symbol				=	'None',
+			a8_price				=	0,
+			a8_forex_pair			=	'None',
+			a8_fx_rate				=	0,
+			a8_portfolio_price		=	0,
+			a8_amount				=	0,
+			a8_amount_change		=	0,
+			a8_local_value			=	0,
+			a8_portfolio_value		=	0,
+			a8_local_change_d		=	0,
+			a8_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_9 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a9_price, 
+					LAG(a9_price,1) OVER (ORDER BY date) AS a9_prev_price_1d, 
+					a9_portfolio_price,
+					LAG(a9_portfolio_price,1) OVER (ORDER BY date) AS a9_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a9_local_change_d 		= ((t1.a9_price - t2.a9_prev_price_1d) / t2.a9_prev_price_1d) * 100,
+		a9_portfolio_change_d 	= ((t1.a9_portfolio_price - t2.a9_prev_portfolio_price_1d) / t2.a9_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a9_symbol				=	'None',
+			a9_price				=	0,
+			a9_forex_pair			=	'None',
+			a9_fx_rate				=	0,
+			a9_portfolio_price		=	0,
+			a9_amount				=	0,
+			a9_amount_change		=	0,
+			a9_local_value			=	0,
+			a9_portfolio_value		=	0,
+			a9_local_change_d		=	0,
+			a9_portfolio_change_d	=	0;
+END IF;
+
+IF @asset_10 IS NOT NULL
+THEN UPDATE portfolio_simulation t1 
+	   JOIN (SELECT 
+					date, 
+					a10_price, 
+					LAG(a10_price,1) OVER (ORDER BY date) AS a10_prev_price_1d, 
+					a10_portfolio_price,
+					LAG(a10_portfolio_price,1) OVER (ORDER BY date) AS a10_prev_portfolio_price_1d 
+					FROM portfolio_simulation) t2
+		 ON t1.date = t2.date
+		SET 
+		a10_local_change_d 		= ((t1.a10_price - t2.a10_prev_price_1d) / t2.a10_prev_price_1d) * 100,
+		a10_portfolio_change_d 	= ((t1.a10_portfolio_price - t2.a10_prev_portfolio_price_1d) / t2.a10_prev_portfolio_price_1d) * 100;
+ELSE UPDATE portfolio_simulation
+		SET a10_symbol				=	'None',
+			a10_price				=	0,
+			a10_forex_pair			=	'None',
+			a10_fx_rate				=	0,
+			a10_portfolio_price		=	0,
+			a10_amount				=	0,
+			a10_amount_change		=	0,
+			a10_local_value			=	0,
+			a10_portfolio_value		=	0,
+			a10_local_change_d		=	0,
+			a10_portfolio_change_d	=	0;
+END IF;
+
+END //
+;
 
 DELIMITER //
 CREATE PROCEDURE first_periodic_data()
@@ -1066,7 +1541,11 @@ INSERT INTO sim_temp (date)
 -- Secondly, all the lookup data and stored values
 UPDATE sim_temp st
 SET
-portfolio_name 		= 	@portfolio_name,
+sim_id 				= 	@sim_id,
+portfolio_id 		=	@portfolio_id,
+strategy_id 		= 	@strategy_id,
+sim_timestamp		=	@sim_timestamp,    
+
 a1_symbol 			= 	@asset_1,
 a1_price			= 	COALESCE((SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_1),1),
 a1_forex_pair		=	IF(@a1_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
@@ -1226,7 +1705,6 @@ ADD INDEX idx_date(date);
 END //
 ;
 
-
 DELIMITER //
 CREATE PROCEDURE sim_periodic_looper(period VARCHAR(50))
 BEGIN
@@ -1257,7 +1735,11 @@ INSERT INTO sim_looper (date)
 -- INSERT KNOWN LOOKUP DATA
 UPDATE sim_looper st
 SET
-portfolio_name 		= 	@portfolio_name,
+sim_id 				= 	@sim_id,
+portfolio_id 		=	@portfolio_id,
+strategy_id 		= 	@strategy_id,
+sim_timestamp		=	@sim_timestamp,    
+
 a1_symbol 			= 	@asset_1,
 a1_price			= 	COALESCE((SELECT last_close FROM asset_prices WHERE date = st.date AND symbol = @asset_1),1),
 a1_forex_pair		=	IF(@a1_currency = @portfolio_currency, @portfolio_currency, (SELECT forex_pair FROM sim_forex_pair)),
@@ -1725,115 +2207,8 @@ DELETE FROM sim_temp
 WHERE a1_amount IS NULL
 OR date > @end_date;
 	
-END//
-
-
-DELIMITER //
-CREATE PROCEDURE sim_final_data_population() -- Filling the table with the remaining data based on the simulation data
-BEGIN
-
-DROP TABLE IF EXISTS portfolio_simulation;
-
-UPDATE sim_temp st
-SET
-a1_local_value 		= a1_price * a1_amount,
-a2_local_value 		= a2_price * a2_amount,
-a3_local_value 		= a3_price * a3_amount,
-a4_local_value 		= a4_price * a4_amount,
-a5_local_value 		= a5_price * a5_amount,
-a6_local_value 		= a6_price * a6_amount,
-a7_local_value 		= a7_price * a7_amount,
-a8_local_value 		= a8_price * a8_amount,
-a9_local_value 		= a9_price * a9_amount,
-a10_local_value 	= a10_price * a10_amount,
-
-usd_exposure_usd	= IF(@a1_currency = 'USD', a1_local_value, 0)
-					+ IF(@a2_currency = 'USD', a2_local_value, 0)
-                    + IF(@a3_currency = 'USD', a3_local_value, 0)
-                    + IF(@a4_currency = 'USD', a4_local_value, 0)
-                    + IF(@a5_currency = 'USD', a5_local_value, 0)
-                    + IF(@a6_currency = 'USD', a6_local_value, 0)
-                    + IF(@a7_currency = 'USD', a7_local_value, 0)
-                    + IF(@a8_currency = 'USD', a8_local_value, 0)
-                    + IF(@a9_currency = 'USD', a9_local_value, 0)
-                    + IF(@a10_currency = 'USD', a10_local_value, 0),
-
-
--- ----------------- CAMBIAR DE NUEVO --> sim_forex_prices --> forex_prices
-usd_exposure_eur	= usd_exposure_usd / (SELECT last_close FROM sim_forex_prices WHERE forex_pair = 'EURUSD' AND date = st.date),
-
-eur_exposure		= IF(@a1_currency = 'EUR', a1_local_value, 0)
-					+ IF(@a2_currency = 'EUR', a2_local_value, 0)
-                    + IF(@a3_currency = 'EUR', a3_local_value, 0)
-                    + IF(@a4_currency = 'EUR', a4_local_value, 0)
-                    + IF(@a5_currency = 'EUR', a5_local_value, 0)
-                    + IF(@a6_currency = 'EUR', a6_local_value, 0)
-                    + IF(@a7_currency = 'EUR', a7_local_value, 0)
-                    + IF(@a8_currency = 'EUR', a8_local_value, 0)
-                    + IF(@a9_currency = 'EUR', a9_local_value, 0)
-                    + IF(@a10_currency = 'EUR', a10_local_value, 0);
-
-
-   IF  @rebalancing_type = 'Period'
- THEN  ALTER TABLE sim_temp
- 	   DROP COLUMN reb_trigger_a1,
-       DROP COLUMN reb_trigger_a2,
-       DROP COLUMN reb_trigger_a3,
-       DROP COLUMN reb_trigger_a4,
-       DROP COLUMN reb_trigger_a5,
-       DROP COLUMN reb_trigger_a6,
-       DROP COLUMN reb_trigger_a7,
-       DROP COLUMN reb_trigger_a8,
-       DROP COLUMN reb_trigger_a9,
-       DROP COLUMN reb_trigger_a10;
-END IF;
-
-
-
-CREATE TABLE portfolio_simulation LIKE sim_temp;     
-
-INSERT INTO portfolio_simulation
-SELECT * FROM sim_temp;             
-
-UPDATE portfolio_simulation t1 
-JOIN (SELECT 
-date, 
-a1_price, 
-LAG(a1_price,1) OVER (ORDER BY date) AS a1_prev_price_1d, 
-a1_portfolio_price,
-LAG(a1_portfolio_price,1) OVER (ORDER BY date) AS a1_prev_portfolio_price_1d, 
-a2_price, 
-LAG(a2_price,1) OVER (ORDER BY date) AS a2_prev_price_1d, 
-a2_portfolio_price,
-LAG(a2_portfolio_price,1) OVER (ORDER BY date) AS a2_prev_portfolio_price_1d, 
-a3_price, 
-LAG(a3_price,1) OVER (ORDER BY date) AS a3_prev_price_1d, 
-a3_portfolio_price,
-LAG(a3_portfolio_price,1) OVER (ORDER BY date) AS a3_prev_portfolio_price_1d, 
-a4_price, 
-LAG(a4_price,1) OVER (ORDER BY date) AS a4_prev_price_1d, 
-a4_portfolio_price,
-LAG(a4_portfolio_price,1) OVER (ORDER BY date) AS a4_prev_portfolio_price_1d, 
-
-tot_balance,
-LAG(tot_balance,1) OVER (ORDER BY date) AS prev_tot_balance_1d
-FROM portfolio_simulation) t2
-ON t1.date = t2.date
-SET 
-t1.a1_local_change_d 	= ((t1.a1_price - t2.a1_prev_price_1d) / t2.a1_prev_price_1d) * 100,
-a1_portfolio_change_d 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_1d) / t2.a1_prev_portfolio_price_1d) * 100,
-t1.a2_local_change_d 	= ((t1.a2_price - t2.a2_prev_price_1d) / t2.a2_prev_price_1d) * 100,
-a2_portfolio_change_d 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_1d) / t2.a2_prev_portfolio_price_1d) * 100,
-t1.a3_local_change_d 	= ((t1.a3_price - t2.a3_prev_price_1d) / t2.a3_prev_price_1d) * 100,
-a3_portfolio_change_d 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_1d) / t2.a3_prev_portfolio_price_1d) * 100,
-t1.a4_local_change_d 	= ((t1.a4_price - t2.a4_prev_price_1d) / t2.a4_prev_price_1d) * 100,
-a4_portfolio_change_d 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_1d) / t2.a4_prev_portfolio_price_1d) * 100,
-t1.tot_balance_change_d = ((t1.tot_balance - t2.prev_tot_balance_1d) / t2.prev_tot_balance_1d) * 100
-WHERE t1.date != @start_date;
-
-SELECT* 
-FROM portfolio_simulation;
-
 END //
-;
+
+
+
 

@@ -100,7 +100,8 @@ CREATE TABLE portfolio_asset(
     allocation FLOAT);
 
 CREATE TABLE strategy(
-	PRIMARY KEY (strategy_name),
+	PRIMARY KEY (strategy_id),
+    strategy_id INT AUTO_INCREMENT,
 	strategy_name VARCHAR(100),
 	rebalancing_type ENUM('deviation', 'period', 'none') DEFAULT 'none',
 	period ENUM('daily', 'weekly', 'monthly', 'quarterly', 'semi-annually', 'annually') DEFAULT NULL,
@@ -108,7 +109,6 @@ CREATE TABLE strategy(
 	lev_rebalancing INT UNSIGNED DEFAULT NULL,
 	min_rebalancing INT UNSIGNED DEFAULT NULL,
 	rel_rebalancing INT UNSIGNED DEFAULT NULL);
-
 
 
 --------------------------
