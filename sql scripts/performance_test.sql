@@ -1,6 +1,10 @@
 
+-- This script works to test the runtime for different batch sizes of dates to calculate at a time within the simulations.
+DROP PROCEDURE sim_performance_results;
+
 CREATE TABLE performance_testing (
-	id INT AUTO_INCREMENT,
+	PRIMARY KEY (id),
+    id INT AUTO_INCREMENT,
 	batch_size INT,
 	start_time TIME,
 	end_time TIME,
@@ -13,7 +17,7 @@ BEGIN
 
 DECLARE counter INT DEFAULT 1;
 
-WHILE counter <= 50 DO
+WHILE counter <= 20 DO
 
 SET @counter = counter;
 
@@ -29,6 +33,10 @@ CALL run_simulation();
 ORDER BY id DESC 
    LIMIT 1;
 
+  SELECT * 
+    FROM performance_testing
+ORDER BY total_time ASC;
+
 SET counter = counter + 1;
 
 END WHILE;
@@ -42,3 +50,9 @@ ORDER BY total_time ASC;
 
 END //
 
+
+CALL sim_performance_results();
+/*
+SELECT * 
+    FROM performance_testing
+ORDER BY total_time ASC;
