@@ -1,6 +1,3 @@
-DROP PROCEDURE portfolio_configuration;
-
-
 -- The procedure to be loaded in the beginning, when starting up the db:
 DELIMITER //
 CREATE PROCEDURE load_basics()
@@ -29,10 +26,10 @@ CALL prepare_sim_forex_data();
 CALL sim_table_creation();
 
 IF @rebalancing_type = 'Period'
-	THEN CALL first_periodic_data(); 		
-		 CALL sim_periodic_looper(@period);
-    ELSE CALL first_row_data();
-		 CALL sim_relative_looper();
+   THEN CALL first_periodic_data(); 		
+		CALL sim_periodic_looper(@period);
+   ELSE CALL first_row_data();
+		CALL sim_relative_looper();
 END IF;		
 
 CALL sim_final_data_population;
@@ -54,22 +51,23 @@ CREATE TABLE asset_prices_update LIKE asset_prices;
 WHILE n < (SELECT COUNT(DISTINCT symbol) FROM asset_prices) DO
 
 INSERT INTO asset_prices_update
-SELECT c.date, (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n) symbol, 
-			   (SELECT exchange FROM asset_prices WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n) LIMIT 1) exchange,
-			   (SELECT data_provider FROM asset_prices WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n) LIMIT 1) data_provider,
-			   open, high, low, close,
-	   IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-											 (LAG(close,2) OVER (ORDER BY c.date)),
-											 (LAG(close,3) OVER (ORDER BY c.date)),
-											 (LAG(close,4) OVER (ORDER BY c.date)),
-											 (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-FROM calendar c                       
-  LEFT JOIN  (SELECT date, symbol, exchange, data_provider, open, high, low, close
-			    FROM asset_prices
-			   WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n)) symbol             
-	     ON symbol.date = c.date
-	  WHERE c.date BETWEEN (SELECT inception_date FROM asset WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n))
-					AND (SELECT end_date FROM asset WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n));
+	 SELECT c.date, 
+			(SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n) symbol, 
+			(SELECT exchange FROM asset_prices WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n) LIMIT 1) exchange,
+			(SELECT data_provider FROM asset_prices WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n) LIMIT 1) data_provider,
+			open, high, low, close,
+			IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
+												  (LAG(close,2) OVER (ORDER BY c.date)),
+												  (LAG(close,3) OVER (ORDER BY c.date)),
+												  (LAG(close,4) OVER (ORDER BY c.date)),
+												  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
+	  FROM calendar c                       
+ LEFT JOIN  (SELECT date, symbol, exchange, data_provider, open, high, low, close
+			   FROM asset_prices
+			  WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n)) symbol             
+				 ON symbol.date = c.date
+			  WHERE c.date BETWEEN (SELECT inception_date FROM asset WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n))
+				AND (SELECT end_date FROM asset WHERE symbol = (SELECT DISTINCT symbol FROM asset_prices GROUP BY symbol LIMIT 1 OFFSET n));
 
 SET n = n + 1;
 
@@ -83,7 +81,6 @@ SELECT *
 FROM asset_prices_update;
 
 DROP TABLE asset_prices_update;
-
 
 END //
 ;
@@ -101,22 +98,22 @@ CREATE TABLE forex_prices_update LIKE forex_prices;
 WHILE n < (SELECT COUNT(DISTINCT forex_pair) FROM forex_prices) DO
 
 INSERT INTO forex_prices_update
-SELECT c.date, (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) forex_pair, 
-			   (SELECT data_provider FROM forex_prices WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) LIMIT 1) data_provider,
-			   open, high, low, close,
-		IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
-											 (LAG(close,2) OVER (ORDER BY c.date)),
-											 (LAG(close,3) OVER (ORDER BY c.date)),
-											 (LAG(close,4) OVER (ORDER BY c.date)),
-											 (LAG(close,5) OVER (ORDER BY c.date)))) last_close
-FROM calendar c                       
-  LEFT JOIN  (SELECT date, forex_pair, data_provider, open, high, low, close
-			    FROM forex_prices
-			   WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n)) forex_pair             
-	     ON forex_pair.date = c.date
-	  WHERE c.date BETWEEN (SELECT date FROM forex_prices WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) ORDER BY date ASC LIMIT 1)
-					   AND (SELECT date FROM forex_prices WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) ORDER BY date DESC LIMIT 1);
-
+	 SELECT c.date, 
+			(SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) forex_pair, 
+			(SELECT data_provider FROM forex_prices WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) LIMIT 1) data_provider,
+			open, high, low, close,
+			IF(close IS NOT NULL, close, COALESCE((LAG(close,1) OVER (ORDER BY c.date)),
+												  (LAG(close,2) OVER (ORDER BY c.date)),
+												  (LAG(close,3) OVER (ORDER BY c.date)),
+												  (LAG(close,4) OVER (ORDER BY c.date)),
+												  (LAG(close,5) OVER (ORDER BY c.date)))) last_close
+	  FROM calendar c                       
+ LEFT JOIN  (SELECT date, forex_pair, data_provider, open, high, low, close
+			   FROM forex_prices
+			  WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n)) forex_pair             
+				 ON forex_pair.date = c.date
+			  WHERE c.date BETWEEN (SELECT date FROM forex_prices WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) ORDER BY date ASC LIMIT 1)
+				AND (SELECT date FROM forex_prices WHERE forex_pair = (SELECT DISTINCT forex_pair FROM forex_prices GROUP BY forex_pair LIMIT 1 OFFSET n) ORDER BY date DESC LIMIT 1);
 
 SET n = n + 1;
 
@@ -130,7 +127,6 @@ SELECT *
 FROM forex_prices_update;
 
 DROP TABLE forex_prices_update;
-
 
 END //
 ;
@@ -161,14 +157,15 @@ SELECT* FROM asset;
 														 OFFSET n)
 								  ORDER BY date ASC 
 									 LIMIT 1)
-		WHERE  symboL		    = 	(SELECT symbol 
-									   FROM asset_temp 
-									  WHERE inception_date IS NULL 
-								   ORDER BY symbol 
-									  LIMIT 1 
-									 OFFSET n);
+		WHERE  symboL		    =  (SELECT symbol 
+									  FROM asset_temp 
+									 WHERE inception_date IS NULL 
+								  ORDER BY symbol 
+									 LIMIT 1 
+									OFFSET n);
 
-		   SET n = n + 1;
+SET n = n + 1;
+
 END WHILE;
 
 END//
@@ -200,13 +197,14 @@ WHILE  n <= (SELECT COUNT(symbol) FROM asset_temp) DO
 														 OFFSET n)
 								  ORDER BY date DESC 
 									 LIMIT 1)
-		WHERE  symboL		    = 	(SELECT symbol 
-									   FROM asset_temp 
-								   ORDER BY symbol 
-									  LIMIT 1 
-									 OFFSET n);
+		WHERE  symboL		    =  (SELECT symbol 
+									  FROM asset_temp 
+								  ORDER BY symbol 
+									 LIMIT 1 
+									OFFSET n);
+                                    
+SET n = n + 1;
 
-		   SET n = n + 1;
 END WHILE;
 
 END//
@@ -226,9 +224,9 @@ BEGIN
 SET @strategy_id 	 = (SELECT strategy_id FROM strategy WHERE strategy_name = @strategy_name); 
  IF @portfolio_name IN (SELECT portfolio_name FROM portfolio) 
                             
-				        THEN SELECT('Portfolio name taken') MESSAGE_FOR_YOU;
-					    ELSE SET @portfolio_id = (SELECT max(portfolio_id) +1 FROM portfolio),
-							     @strategy_id  = (SELECT strategy_id FROM strategy WHERE strategy_name = @strategy_name);
+				        THEN SELECT ('Portfolio name taken') MESSAGE_FOR_YOU;
+						ELSE SET 	@portfolio_id = (SELECT max(portfolio_id) +1 FROM portfolio),
+									@strategy_id  = (SELECT strategy_id FROM strategy WHERE strategy_name = @strategy_name);
 							 INSERT INTO 	portfolio (portfolio_id, portfolio_name, portfolio_currency, portfolio_strategy, portfolio_transaction_cost)
 							      VALUES 	(@portfolio_id, @portfolio_name, @portfolio_currency, @strategy_id, @portfolio_transaction_cost);
 					
@@ -252,7 +250,7 @@ SET @strategy_id 	 = (SELECT strategy_id FROM strategy WHERE strategy_name = @st
 								 END IF;
 								 IF 		@asset_10 != '' THEN INSERT INTO portfolio_asset VALUES (@portfolio_id, @asset_10, @asset_10_allocation);
 								 END IF;
-			END IF;
+ END IF;
               
 END//
 ;
@@ -260,8 +258,6 @@ END//
 DELIMITER //
 CREATE PROCEDURE strategy_configuration()
 BEGIN
-
-
 
     IF @strategy_name IN 	(SELECT strategy_name FROM strategy) 
                             THEN SELECT('Strategy name taken') MESSAGE_FOR_YOU;
@@ -318,48 +314,48 @@ SET							-- 	Setting the variables from the strategy table
 @rel_rebalancing			=	(SELECT rel_rebalancing	FROM strategy WHERE strategy_id = @portfolio_strategy);
 
 SET							-- 	Setting the variables from the portfolio assets table. Assets will be named 1-10 according to their allocation. 
-@asset_1 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
-@asset_2 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 1),
-@asset_3 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 2),
-@asset_4 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 3),
-@asset_5 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 4),
-@asset_6 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 5),
-@asset_7 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 6),
-@asset_8 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 7),
-@asset_9 				= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 8),
-@asset_10		 		= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 9),
-@asset_1_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
-@asset_2_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 1),
-@asset_3_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 2),
-@asset_4_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 3),
-@asset_5_allocation 	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 4),
-@asset_6_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 5),
-@asset_7_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 6),
-@asset_8_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 7),
-@asset_9_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 8),
-@asset_10_allocation	= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 9),
-@a1_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_1), 
-@a2_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_2),
-@a3_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_3),
-@a4_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_4),
-@a5_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_5),
-@a6_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_6),
-@a7_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_7),
-@a8_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_8),
-@a9_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_9),
-@a10_currency 			= (SELECT currency FROM asset WHERE symbol = @asset_10);
+@asset_1 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
+@asset_2 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 1),
+@asset_3 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 2),
+@asset_4 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 3),
+@asset_5 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 4),
+@asset_6 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 5),
+@asset_7 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 6),
+@asset_8 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 7),
+@asset_9 					= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 8),
+@asset_10		 			= (SELECT symbol FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 9),
+@asset_1_allocation			= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 0), 
+@asset_2_allocation			= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 1),
+@asset_3_allocation 		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 2),
+@asset_4_allocation 		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 3),
+@asset_5_allocation 		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 4),
+@asset_6_allocation			= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 5),
+@asset_7_allocation			= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 6),
+@asset_8_allocation			= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 7),
+@asset_9_allocation			= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 8),
+@asset_10_allocation		= (SELECT allocation FROM portfolio_asset WHERE portfolio_id = @portfolio_id ORDER BY allocation DESC LIMIT 1 OFFSET 9),
+@a1_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_1), 
+@a2_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_2),
+@a3_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_3),
+@a4_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_4),
+@a5_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_5),
+@a6_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_6),
+@a7_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_7),
+@a8_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_8),
+@a9_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_9),
+@a10_currency 				= (SELECT currency FROM asset WHERE symbol = @asset_10);
 
- SET @start_date = (SELECT MAX(inception_date)
-					  FROM asset
-					 WHERE symbol IN (SELECT symbol 
-                                        FROM portfolio_asset 
-									   WHERE portfolio_id = @portfolio_id));
+ SET @start_date 			= (SELECT MAX(inception_date)
+								 FROM asset
+								WHERE symbol IN (SELECT symbol 
+												   FROM portfolio_asset 
+												  WHERE portfolio_id = @portfolio_id));
  
-  SET @end_date =  (SELECT MIN(end_date)
-					  FROM asset
-					 WHERE symbol IN (SELECT symbol 
-                                        FROM portfolio_asset 
-									   WHERE portfolio_id = @portfolio_id));
+  SET @end_date 			=  (SELECT MIN(end_date)
+								  FROM asset
+								 WHERE symbol IN (SELECT symbol 
+													FROM portfolio_asset 
+												   WHERE portfolio_id = @portfolio_id));
 
 END //
 ;
@@ -374,7 +370,6 @@ BEGIN
     
 DROP TABLE IF EXISTS sim_currencies;
 DROP TABLE IF EXISTS sim_forex_pair;
-
 
 -- Collecting all currencies that are not the portfolio currency 
 -- a feature that will make more sense once we handle several currencies, not only EUR and USD 
@@ -402,12 +397,12 @@ CREATE PROCEDURE sim_table_creation() -- Creating the table and filling in date 
 BEGIN
 
 INSERT INTO simulation (sim_id, timestamp, portfolio_id, strategy_id, start_date, end_date)
-VALUES (@sim_id, @sim_timestamp, @portfolio_id, @strategy_id, @start_date, @end_date);
+     VALUES (@sim_id, @sim_timestamp, @portfolio_id, @strategy_id, @start_date, @end_date);
 
 DROP TABLE IF EXISTS sim_temp; 
 
 CREATE TABLE sim_temp ( -- Temporary table for a simulation
-    sim_id INT NULL,
+	sim_id INT NULL,
     portfolio_id VARCHAR(100) NULL,
     strategy_id VARCHAR(100) NULL,
     sim_timestamp TIMESTAMP NULL,
@@ -630,7 +625,7 @@ p_value 				= COALESCE(a1_portfolio_value, 0) +
                           COALESCE(a10_portfolio_value, 0),
 buy 					= a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
 						+ a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value,
-transaction_costs		= -(IF(a1_amount_change != 0, 1, 0)
+transaction_costs		= 	-(IF(a1_amount_change != 0, 1, 0)
 							+ IF(a2_amount_change != 0, 1, 0)
 							+ IF(a3_amount_change != 0, 1, 0)
 							+ IF(a4_amount_change != 0, 1, 0)
@@ -640,12 +635,11 @@ transaction_costs		= -(IF(a1_amount_change != 0, 1, 0)
                             + IF(a8_amount_change != 0, 1, 0)
                             + IF(a9_amount_change != 0, 1, 0)
                             + IF(a10_amount_change != 0, 1, 0)) * @portfolio_transaction_cost,
-tot_change				= -(a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
-						 + a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value) + transaction_costs,
+tot_change				= - (a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
+						  +  a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value) + transaction_costs,
 acc_balance				= @inicial_balance + tot_change,
 tot_balance				= p_value + acc_balance,
 leverage_rate			= p_value / tot_balance,
-
 a1_allocation 			= (a1_portfolio_value / (tot_balance*((@leverage+100)/100))),
 a2_allocation 			= (a2_portfolio_value / (tot_balance*((@leverage+100)/100))),
 a3_allocation 			= (a3_portfolio_value / (tot_balance*((@leverage+100)/100))),
@@ -667,7 +661,8 @@ END //
 DELIMITER //
 CREATE PROCEDURE performance_metrics_calculation()
 BEGIN
-INSERT INTO simulation_data
+
+ INSERT INTO simulation_data
 SELECT* FROM portfolio_simulation;
 
 INSERT INTO sim_performance_monthly (sim_id, month, year)
@@ -678,55 +673,53 @@ INSERT INTO sim_performance_monthly (sim_id, month, year)
 					    FROM portfolio_simulation) t2;
 
 UPDATE sim_performance_monthly
-SET sim_id 	      = @sim_id,
-    period_return = (SELECT (t2.end_value/t1.start_value-1)*100
-				    FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
-							FROM portfolio_simulation
-							WHERE month(date) = sim_performance_monthly.month -- p_sim_performance_m.month
-							AND year(date)=	sim_performance_monthly.year
-							ORDER BY date ASC
-							LIMIT 1) t1 
-					JOIN
-					(SELECT date, tot_balance AS end_value
-					FROM portfolio_simulation
-							WHERE month(date) = sim_performance_monthly.month -- p_sim_performance_m.month
-							AND year(date)=	sim_performance_monthly.year
-							ORDER BY date DESC
-							LIMIT 1) t2),                          
-    period_rfr   = (SELECT AVG(last_rate)/12*100
-					FROM econ_indicator_values t1
-					WHERE month(date) = sim_performance_monthly.month -- p_sim_performance_m.month
-					AND year(date)=	sim_performance_monthly.year),                 
-	maximum_dd    = (SELECT min(dd)*100 
-					   FROM (SELECT date, 
-						   		    tot_balance, 
-								    max(tot_balance) OVER (ORDER BY date) AS max_value, 
-								    (tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
-						     FROM portfolio_simulation
-						     WHERE tot_balance IS NOT NULL
-						     AND month(date) = sim_performance_monthly.month
-						     AND year(date)  =	sim_performance_monthly.year) dd_series),
-	standard_dev  = (SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(t1.date)) 
-					FROM portfolio_simulation t1
-					INNER JOIN (SELECT date, is_weekday
-								FROM calendar c) t2
-					ON t2.date = t1.date
-					WHERE month(t1.date) = sim_performance_monthly.month --  p_sim_performance_m.month
-					AND year(t1.date)=	sim_performance_monthly.year
-					AND is_weekday = 1),
-	var			  = (SELECT VARIANCE(tot_balance_change_d/100)
-					FROM portfolio_simulation
-					WHERE month(date) = sim_performance_monthly.month --  p_sim_performance_m.month
-					AND year(date)=	sim_performance_monthly.year),
-	sharp_ratio   = (period_return - period_rfr) / standard_dev,
-    sortino_ratio = (period_return - period_rfr) / 
-					(SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
-					FROM portfolio_simulation
-					WHERE month(date) = sim_performance_monthly.month --  p_sim_performance_m.month
-					AND year(date)=	sim_performance_monthly.year
-					AND tot_balance_change_d < 0) 
+   SET sim_id 	      = @sim_id,
+	   period_return  = (SELECT (t2.end_value/t1.start_value-1)*100
+						   FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
+								   FROM portfolio_simulation
+								  WHERE month(date) = sim_performance_monthly.month 
+									AND year(date)=	sim_performance_monthly.year
+							   ORDER BY date ASC
+								  LIMIT 1) t1 
+						   JOIN (SELECT date, tot_balance AS end_value
+								   FROM portfolio_simulation
+								  WHERE month(date) = sim_performance_monthly.month 
+									AND year(date)=	sim_performance_monthly.year
+							   ORDER BY date DESC
+								  LIMIT 1) t2),                          
+	   period_rfr    = (SELECT AVG(last_rate)/12*100
+						  FROM econ_indicator_values t1
+						 WHERE month(date) = sim_performance_monthly.month 
+						   AND year(date)=	sim_performance_monthly.year),                 
+	   maximum_dd    = (SELECT min(dd)*100 
+						   FROM (SELECT date, 
+										tot_balance, 
+										max(tot_balance) OVER (ORDER BY date) AS max_value, 
+										(tot_balance / max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+								   FROM portfolio_simulation
+								  WHERE tot_balance IS NOT NULL
+								    AND month(date) = sim_performance_monthly.month
+									AND year(date)  = sim_performance_monthly.year) dd_series),
+	  standard_dev  = (SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(t1.date)) 
+						 FROM portfolio_simulation t1
+				   INNER JOIN (SELECT date, is_weekday
+								 FROM calendar c) t2
+						   ON t2.date = t1.date
+						WHERE month(t1.date) = sim_performance_monthly.month 
+						  AND year(t1.date)	 = sim_performance_monthly.year
+						  AND is_weekday = 1),
+	  var		    = (SELECT VARIANCE(tot_balance_change_d/100)
+						 FROM portfolio_simulation
+						WHERE month(date) = sim_performance_monthly.month 
+						  AND year(date)  =	sim_performance_monthly.year),
+	  sharp_ratio   = (period_return - period_rfr) / standard_dev,
+      sortino_ratio = (period_return - period_rfr) / 
+					  (SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
+						 FROM portfolio_simulation
+						WHERE month(date) = sim_performance_monthly.month 
+						  AND year(date)  =	sim_performance_monthly.year
+						  AND tot_balance_change_d < 0) 
 WHERE sim_id = @sim_id;
-
 
 INSERT INTO sim_performance_yearly (sim_id, year)
 	 SELECT @sim_id, YEAR(date) AS year
@@ -735,18 +728,18 @@ INSERT INTO sim_performance_yearly (sim_id, year)
 	 HAVING COUNT(DISTINCT MONTH(date)) = 12;
 
 UPDATE sim_performance_yearly
-   SET 	period_return = (SELECT (t2.end_value/t1.start_value-1)*100
-					       FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
-							       FROM portfolio_simulation
-								  WHERE year(date) = sim_performance_yearly.year
-							   ORDER BY date ASC
-								  LIMIT 1) t1 
-						   JOIN  (SELECT date, 
+   SET period_return = (SELECT (t2.end_value/t1.start_value-1)*100
+						  FROM (SELECT date, tot_balance / (tot_balance_change_d/100 + 1) AS start_value -- calculating the previous days closing as a starting value
+								  FROM portfolio_simulation
+								 WHERE year(date) = sim_performance_yearly.year
+							  ORDER BY date ASC
+								 LIMIT 1) t1 
+						  JOIN (SELECT date, 
 									   tot_balance AS end_value
-								    FROM portfolio_simulation
-								   WHERE year(date) = sim_performance_yearly.year
-							    ORDER BY date DESC
-								   LIMIT 1) t2),   
+								  FROM portfolio_simulation
+								 WHERE year(date) = sim_performance_yearly.year
+							  ORDER BY date DESC
+								 LIMIT 1) t2),   
 		period_rfr    = (SELECT AVG(last_rate)
 						   FROM econ_indicator_values t1
 						  WHERE year(t1.date) = sim_performance_yearly.year),
@@ -755,9 +748,9 @@ UPDATE sim_performance_yearly
 											tot_balance, 
 											max(tot_balance) OVER (ORDER BY date) AS max_value, 
 											(tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
-									  FROM 	portfolio_simulation
-									 WHERE 	tot_balance IS NOT NULL
-									   AND 	year(date) = sim_performance_yearly.year) dd_series),
+									   FROM portfolio_simulation
+									  WHERE tot_balance IS NOT NULL
+									    AND	year(date) = sim_performance_yearly.year) dd_series),
 		standard_dev  = (SELECT STDDEV(tot_balance_change_d) * SQRT(COUNT(date)) 
 						   FROM portfolio_simulation
 						  WHERE tot_balance IS NOT NULL
@@ -783,11 +776,11 @@ UPDATE simulation
 										   WHERE date BETWEEN @start_date AND @end_date),
 	   maximum_dd 					=	 (SELECT min(dd) * 100
 										    FROM (SELECT date, 
-														tot_balance, 
-														max(tot_balance) OVER (ORDER BY date) AS max_value, 
-														(tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
-												   FROM portfolio_simulation
-												  WHERE tot_balance IS NOT NULL) dd_series),
+														 tot_balance, 
+														 max(tot_balance) OVER (ORDER BY date) AS max_value, 
+														 (tot_balance /  max(tot_balance) OVER (ORDER BY date)) - 1 AS dd
+												    FROM portfolio_simulation
+												   WHERE tot_balance IS NOT NULL) dd_series),
 	   standard_dev_annual_mean 	=	 (SELECT AVG(standard_dev)
 									        FROM sim_performance_yearly
 										   WHERE sim_id = @sim_id),
@@ -1120,9 +1113,7 @@ transaction_costs 			= 	-(IF(a1_amount_change != 0, 1, 0)
 interest					= 	IF(prev_acc_balance < 0, prev_acc_balance * (SELECT last_rate + @interest_augment 
 																			   FROM econ_indicator_values 
 																			  WHERE symbol = 'EUR-RFR' 
-                                                                                AND date = t1.date)
-                                                                                    /100/365, 
-                                                                                    0),
+                                                                                AND date = t1.date) / 100 / 365, 0),
 t1.tot_change				=	t1.buy + t1.sell + t1.deposit + t1.withdrawl + t1.transaction_costs + t1.interest,
 t1.acc_balance				=	t2.prev_acc_balance + tot_change,
 t1.tot_balance				=	acc_balance + p_value,
@@ -1139,15 +1130,15 @@ a9_allocation 				= (a9_portfolio_value / (tot_balance*((@leverage+100)/100))),
 a10_allocation 				= (a10_portfolio_value / (tot_balance*((@leverage+100)/100)))
 WHERE t1.date = loop_date;
         
-        SET inner_counter = inner_counter + 1;
-        SET loop_date = DATE_ADD(loop_date, INTERVAL 1 DAY);
+SET inner_counter = inner_counter + 1;
+SET loop_date = DATE_ADD(loop_date, INTERVAL 1 DAY);
         
 END WHILE;
 
 INSERT INTO sim_temp
-	SELECT* 
-	FROM sim_looper
-    WHERE date != @max_date;
+	 SELECT * 
+	   FROM sim_looper
+      WHERE date != @max_date;
 
 DELETE
 FROM sim_looper;
@@ -1157,10 +1148,9 @@ SET outer_counter = outer_counter + 1;
 
 END WHILE;
 
-
 DELETE FROM sim_temp
-WHERE a1_amount IS NULL
-OR date > @end_date;
+	  WHERE a1_amount IS NULL
+	     OR date > @end_date;
 
 END //
 ;
@@ -1196,7 +1186,6 @@ usd_exposure_usd	= IF(@a1_currency = 'USD', a1_local_value, 0)
                     + IF(@a9_currency = 'USD', a9_local_value, 0)
                     + IF(@a10_currency = 'USD', a10_local_value, 0),
 
-
 -- ----------------- CAMBIAR DE NUEVO --> sim_forex_prices --> forex_prices
 usd_exposure_eur	= usd_exposure_usd / (SELECT last_close FROM sim_forex_prices WHERE forex_pair = 'EURUSD' AND date = st.date),
 
@@ -1228,7 +1217,8 @@ END IF;
 CREATE TABLE portfolio_simulation LIKE sim_temp;     
 
 INSERT INTO portfolio_simulation
-SELECT * FROM sim_temp;             
+	 SELECT * 
+       FROM sim_temp;             
 
 UPDATE portfolio_simulation t1 
   JOIN (SELECT 
@@ -1240,47 +1230,42 @@ UPDATE portfolio_simulation t1
    SET t1.tot_balance_change_d = ((t1.tot_balance - t2.prev_tot_balance_1d) / t2.prev_tot_balance_1d) * 100
  WHERE t1.date != @start_date;
 
-
 IF @asset_1 IS NOT NULL
-THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
-					a1_price, 
-					LAG(a1_price,1) OVER (ORDER BY date) AS a1_prev_price_1d, 
-					a1_portfolio_price,
-					LAG(a1_portfolio_price,1) OVER (ORDER BY date) AS a1_prev_portfolio_price_1d 
-					FROM portfolio_simulation) t2
-		 ON t1.date = t2.date
-		SET 
-		a1_local_change_d 		= ((t1.a1_price - t2.a1_prev_price_1d) / t2.a1_prev_price_1d) * 100,
-		a1_portfolio_change_d 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_1d) / t2.a1_prev_portfolio_price_1d) * 100;
-ELSE UPDATE portfolio_simulation
-		SET a1_symbol				=	'None',
-			a1_price				=	0,
-			a1_forex_pair			=	'None',
-			a1_fx_rate				=	0,
-			a1_portfolio_price		=	0,
-			a1_amount				=	0,
-			a1_amount_change		=	0,
-			a1_local_value			=	0,
-			a1_portfolio_value		=	0,
-			a1_local_change_d		=	0,
-			a1_portfolio_change_d	=	0;
+   THEN UPDATE 	portfolio_simulation t1 
+		  JOIN 	(SELECT date, 
+					   a1_price, 
+					   LAG(a1_price,1) OVER (ORDER BY date) AS a1_prev_price_1d, 
+					   a1_portfolio_price,
+					   LAG(a1_portfolio_price,1) OVER (ORDER BY date) AS a1_prev_portfolio_price_1d 
+				  FROM portfolio_simulation) t2
+			ON 	t1.date = t2.date
+		   SET 	a1_local_change_d 		= ((t1.a1_price - t2.a1_prev_price_1d) / t2.a1_prev_price_1d) * 100,
+				a1_portfolio_change_d 	= ((t1.a1_portfolio_price - t2.a1_prev_portfolio_price_1d) / t2.a1_prev_portfolio_price_1d) * 100;
+   ELSE UPDATE 	portfolio_simulation
+		   SET 	a1_symbol				=	'None',
+				a1_price				=	0,
+				a1_forex_pair			=	'None',
+				a1_fx_rate				=	0,
+				a1_portfolio_price		=	0,
+				a1_amount				=	0,
+				a1_amount_change		=	0,
+				a1_local_value			=	0,
+				a1_portfolio_value		=	0,
+				a1_local_change_d		=	0,
+				a1_portfolio_change_d	=	0;
 END IF;
 
 IF @asset_2 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a2_price, 
 					LAG(a2_price,1) OVER (ORDER BY date) AS a2_prev_price_1d, 
 					a2_portfolio_price,
 					LAG(a2_portfolio_price,1) OVER (ORDER BY date) AS a2_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a2_local_change_d 		= ((t1.a2_price - t2.a2_prev_price_1d) / t2.a2_prev_price_1d) * 100,
-		a2_portfolio_change_d 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_1d) / t2.a2_prev_portfolio_price_1d) * 100;
+		SET a2_local_change_d 		= ((t1.a2_price - t2.a2_prev_price_1d) / t2.a2_prev_price_1d) * 100,
+			a2_portfolio_change_d 	= ((t1.a2_portfolio_price - t2.a2_prev_portfolio_price_1d) / t2.a2_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a2_symbol				=	'None',
 			a2_price				=	0,
@@ -1297,17 +1282,15 @@ END IF;
 
 IF @asset_3 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a3_price, 
 					LAG(a3_price,1) OVER (ORDER BY date) AS a3_prev_price_1d, 
 					a3_portfolio_price,
 					LAG(a3_portfolio_price,1) OVER (ORDER BY date) AS a3_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a3_local_change_d 		= ((t1.a3_price - t2.a3_prev_price_1d) / t2.a3_prev_price_1d) * 100,
-		a3_portfolio_change_d 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_1d) / t2.a3_prev_portfolio_price_1d) * 100;
+		SET a3_local_change_d 		= ((t1.a3_price - t2.a3_prev_price_1d) / t2.a3_prev_price_1d) * 100,
+			a3_portfolio_change_d 	= ((t1.a3_portfolio_price - t2.a3_prev_portfolio_price_1d) / t2.a3_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a3_symbol				=	'None',
 			a3_price				=	0,
@@ -1324,17 +1307,15 @@ END IF;
 
 IF @asset_4 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a4_price, 
 					LAG(a4_price,1) OVER (ORDER BY date) AS a4_prev_price_1d, 
 					a4_portfolio_price,
 					LAG(a4_portfolio_price,1) OVER (ORDER BY date) AS a4_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a4_local_change_d 		= ((t1.a4_price - t2.a4_prev_price_1d) / t2.a4_prev_price_1d) * 100,
-		a4_portfolio_change_d 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_1d) / t2.a4_prev_portfolio_price_1d) * 100;
+		SET a4_local_change_d 		= ((t1.a4_price - t2.a4_prev_price_1d) / t2.a4_prev_price_1d) * 100,
+			a4_portfolio_change_d 	= ((t1.a4_portfolio_price - t2.a4_prev_portfolio_price_1d) / t2.a4_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a4_symbol				=	'None',
 			a4_price				=	0,
@@ -1351,17 +1332,15 @@ END IF;
 
 IF @asset_5 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a5_price, 
 					LAG(a5_price,1) OVER (ORDER BY date) AS a5_prev_price_1d, 
 					a5_portfolio_price,
 					LAG(a5_portfolio_price,1) OVER (ORDER BY date) AS a5_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a5_local_change_d 		= ((t1.a5_price - t2.a5_prev_price_1d) / t2.a5_prev_price_1d) * 100,
-		a5_portfolio_change_d 	= ((t1.a5_portfolio_price - t2.a5_prev_portfolio_price_1d) / t2.a5_prev_portfolio_price_1d) * 100;
+		SET a5_local_change_d 		= ((t1.a5_price - t2.a5_prev_price_1d) / t2.a5_prev_price_1d) * 100,
+			a5_portfolio_change_d 	= ((t1.a5_portfolio_price - t2.a5_prev_portfolio_price_1d) / t2.a5_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a5_symbol				=	'None',
 			a5_price				=	0,
@@ -1378,17 +1357,15 @@ END IF;
 
 IF @asset_6 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a6_price, 
 					LAG(a6_price,1) OVER (ORDER BY date) AS a6_prev_price_1d, 
 					a6_portfolio_price,
 					LAG(a6_portfolio_price,1) OVER (ORDER BY date) AS a6_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a6_local_change_d 		= ((t1.a6_price - t2.a6_prev_price_1d) / t2.a6_prev_price_1d) * 100,
-		a6_portfolio_change_d 	= ((t1.a6_portfolio_price - t2.a6_prev_portfolio_price_1d) / t2.a6_prev_portfolio_price_1d) * 100;
+		SET a6_local_change_d 		= ((t1.a6_price - t2.a6_prev_price_1d) / t2.a6_prev_price_1d) * 100,
+			a6_portfolio_change_d 	= ((t1.a6_portfolio_price - t2.a6_prev_portfolio_price_1d) / t2.a6_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a6_symbol				=	'None',
 			a6_price				=	0,
@@ -1405,17 +1382,15 @@ END IF;
 
 IF @asset_7 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a7_price, 
 					LAG(a7_price,1) OVER (ORDER BY date) AS a7_prev_price_1d, 
 					a7_portfolio_price,
 					LAG(a7_portfolio_price,1) OVER (ORDER BY date) AS a7_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a7_local_change_d 		= ((t1.a7_price - t2.a7_prev_price_1d) / t2.a7_prev_price_1d) * 100,
-		a7_portfolio_change_d 	= ((t1.a7_portfolio_price - t2.a7_prev_portfolio_price_1d) / t2.a7_prev_portfolio_price_1d) * 100;
+		SET a7_local_change_d 		= ((t1.a7_price - t2.a7_prev_price_1d) / t2.a7_prev_price_1d) * 100,
+			a7_portfolio_change_d 	= ((t1.a7_portfolio_price - t2.a7_prev_portfolio_price_1d) / t2.a7_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a7_symbol				=	'None',
 			a7_price				=	0,
@@ -1432,17 +1407,15 @@ END IF;
 
 IF @asset_8 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a8_price, 
 					LAG(a8_price,1) OVER (ORDER BY date) AS a8_prev_price_1d, 
 					a8_portfolio_price,
 					LAG(a8_portfolio_price,1) OVER (ORDER BY date) AS a8_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a8_local_change_d 		= ((t1.a8_price - t2.a8_prev_price_1d) / t2.a8_prev_price_1d) * 100,
-		a8_portfolio_change_d 	= ((t1.a8_portfolio_price - t2.a8_prev_portfolio_price_1d) / t2.a8_prev_portfolio_price_1d) * 100;
+		SET a8_local_change_d 		= ((t1.a8_price - t2.a8_prev_price_1d) / t2.a8_prev_price_1d) * 100,
+			a8_portfolio_change_d 	= ((t1.a8_portfolio_price - t2.a8_prev_portfolio_price_1d) / t2.a8_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a8_symbol				=	'None',
 			a8_price				=	0,
@@ -1459,17 +1432,15 @@ END IF;
 
 IF @asset_9 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a9_price, 
 					LAG(a9_price,1) OVER (ORDER BY date) AS a9_prev_price_1d, 
 					a9_portfolio_price,
 					LAG(a9_portfolio_price,1) OVER (ORDER BY date) AS a9_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a9_local_change_d 		= ((t1.a9_price - t2.a9_prev_price_1d) / t2.a9_prev_price_1d) * 100,
-		a9_portfolio_change_d 	= ((t1.a9_portfolio_price - t2.a9_prev_portfolio_price_1d) / t2.a9_prev_portfolio_price_1d) * 100;
+		SET a9_local_change_d 		= ((t1.a9_price - t2.a9_prev_price_1d) / t2.a9_prev_price_1d) * 100,
+			a9_portfolio_change_d 	= ((t1.a9_portfolio_price - t2.a9_prev_portfolio_price_1d) / t2.a9_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a9_symbol				=	'None',
 			a9_price				=	0,
@@ -1486,17 +1457,15 @@ END IF;
 
 IF @asset_10 IS NOT NULL
 THEN UPDATE portfolio_simulation t1 
-	   JOIN (SELECT 
-					date, 
+	   JOIN (SELECT date, 
 					a10_price, 
 					LAG(a10_price,1) OVER (ORDER BY date) AS a10_prev_price_1d, 
 					a10_portfolio_price,
 					LAG(a10_portfolio_price,1) OVER (ORDER BY date) AS a10_prev_portfolio_price_1d 
 					FROM portfolio_simulation) t2
 		 ON t1.date = t2.date
-		SET 
-		a10_local_change_d 		= ((t1.a10_price - t2.a10_prev_price_1d) / t2.a10_prev_price_1d) * 100,
-		a10_portfolio_change_d 	= ((t1.a10_portfolio_price - t2.a10_prev_portfolio_price_1d) / t2.a10_prev_portfolio_price_1d) * 100;
+		SET a10_local_change_d 		= ((t1.a10_price - t2.a10_prev_price_1d) / t2.a10_prev_price_1d) * 100,
+			a10_portfolio_change_d 	= ((t1.a10_portfolio_price - t2.a10_prev_portfolio_price_1d) / t2.a10_prev_portfolio_price_1d) * 100;
 ELSE UPDATE portfolio_simulation
 		SET a10_symbol				=	'None',
 			a10_price				=	0,
@@ -1671,7 +1640,7 @@ p_value 				= COALESCE(a1_portfolio_value, 0) +
                           COALESCE(a10_portfolio_value, 0),
 buy 					= a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
 						+ a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value,
-transaction_costs		= -(IF(a1_amount_change != 0, 1, 0)
+transaction_costs		=   -(IF(a1_amount_change != 0, 1, 0)
 							+ IF(a2_amount_change != 0, 1, 0)
 							+ IF(a3_amount_change != 0, 1, 0)
 							+ IF(a4_amount_change != 0, 1, 0)
@@ -1681,8 +1650,8 @@ transaction_costs		= -(IF(a1_amount_change != 0, 1, 0)
                             + IF(a8_amount_change != 0, 1, 0)
                             + IF(a9_amount_change != 0, 1, 0)
                             + IF(a10_amount_change != 0, 1, 0)) * @portfolio_transaction_cost,
-tot_change				= -(a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
-						 + a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value) + transaction_costs,
+tot_change				= - (a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
+						  +  a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value) + transaction_costs,
 acc_balance				= @inicial_balance + tot_change,
 tot_balance				= p_value + acc_balance,
 leverage_rate			= p_value / tot_balance,
@@ -1868,19 +1837,19 @@ ON t1.date = t2.date
 SET 
 reb_trigger_a1				= CASE 
 								WHEN prev_reb_trigger_a1 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										 (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										 (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										 (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										 (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
-                                THEN 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+                                THEN  0
 								WHEN prev_reb_trigger_a1 = 0
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-										 (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										 (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-										 (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-								    AND  MONTH(t1.date) IN (1, 7)) OR
-										(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a1 = 1 
 								 AND (SELECT close FROM asset_prices ap WHERE symbol = @asset_1 AND date = prev_date) IS NULL 	
@@ -1889,18 +1858,19 @@ reb_trigger_a1				= CASE
 							END,
 reb_trigger_a2				= CASE 
 								WHEN prev_reb_trigger_a2 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))						
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a2 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a2 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_2 AND date = prev_date) IS NULL 	
@@ -1909,18 +1879,19 @@ reb_trigger_a2				= CASE
 							END,
 reb_trigger_a3				= CASE 
 								WHEN prev_reb_trigger_a3 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))							
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a3 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a3 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_3 AND date = prev_date) IS NULL 	
@@ -1929,18 +1900,19 @@ reb_trigger_a3				= CASE
 							END,                               
 reb_trigger_a4				= CASE 
 								WHEN prev_reb_trigger_a4 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))							
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a4 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a4 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_4 AND date = prev_date) IS NULL 	
@@ -1949,18 +1921,19 @@ reb_trigger_a4				= CASE
 							END,
 reb_trigger_a5				= CASE 
 								WHEN prev_reb_trigger_a5 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))						
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a5 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a5 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_4 AND date = prev_date) IS NULL 	
@@ -1969,18 +1942,19 @@ reb_trigger_a5				= CASE
 							END,
 reb_trigger_a6				= CASE 
 								WHEN prev_reb_trigger_a6 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))							
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a6 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a6 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_4 AND date = prev_date) IS NULL 	
@@ -1989,18 +1963,19 @@ reb_trigger_a6				= CASE
 							END,
 reb_trigger_a7				= CASE 
 								WHEN prev_reb_trigger_a7 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a7 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a7 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_4 AND date = prev_date) IS NULL 	
@@ -2009,18 +1984,19 @@ reb_trigger_a7				= CASE
 							END,
 reb_trigger_a8				= CASE 
 								WHEN prev_reb_trigger_a8 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))							
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a8 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a8 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_4 AND date = prev_date) IS NULL 	
@@ -2029,18 +2005,19 @@ reb_trigger_a8				= CASE
 							END,
 reb_trigger_a9				= CASE 
 								WHEN prev_reb_trigger_a9 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a9 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a9 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_4 AND date = prev_date) IS NULL 	
@@ -2049,18 +2026,19 @@ reb_trigger_a9				= CASE
 							END,
 reb_trigger_a10				= CASE 
 								WHEN prev_reb_trigger_a10 = 0										
-									AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
-										(period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-										(period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
-										(period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
-										(period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))								
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) = WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) = MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) = QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) = QUARTER(prev_date)) OR 													-- AND MONTH(t1.date) IN (6, 12)) OR
+									  (period = 'annually' AND YEAR(t1.date) = YEAR(prev_date)))							
                                 THEN 0
-								WHEN ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
-									(period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
-									(period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
-									(period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
-									AND MONTH(t1.date) IN (1, 7)) OR
-									(period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
+								WHEN prev_reb_trigger_a10 = 0
+								 AND ((period = 'weekly' AND WEEKOFYEAR(t1.date) != WEEKOFYEAR(prev_date)) OR
+									  (period = 'monthly' AND MONTH(t1.date) != MONTH(prev_date)) OR  																-- The rest of the period changes will always come with a change of month
+									  (period = 'quarterly' AND QUARTER(t1.date) != QUARTER(prev_date)) OR
+									  (period = 'semi-annually' AND QUARTER(t1.date) != QUARTER(prev_date) 
+								 AND MONTH(t1.date) IN (1, 7)) OR
+									 (period = 'annually' AND YEAR(t1.date) != YEAR(prev_date)))								
 								THEN 1
 								WHEN prev_reb_trigger_a10 = 1 
 									AND (SELECT close FROM asset_prices WHERE symbol = @asset_4 AND date = prev_date) IS NULL 	
@@ -2068,7 +2046,7 @@ reb_trigger_a10				= CASE
                                 ELSE 0
 							END,
 t1.a1_amount 				= IF((SELECT close FROM asset_prices WHERE symbol = @asset_1 AND date = t1.date) IS NOT NULL
-									 AND reb_trigger_a1 = 1,                               
+									AND reb_trigger_a1 = 1,                               
 									FLOOR(t2.prev_tot_balance * COALESCE(@leverage / 100 + 1, 1) * @asset_1_allocation / 100 / a1_portfolio_price),
 									t2.prev_a1_amount),                         										                                   
 t1.a2_amount 				= IF((SELECT close FROM asset_prices WHERE symbol = @asset_2 AND date = t1.date) IS NOT NULL
@@ -2129,7 +2107,7 @@ t1.a9_portfolio_value			= a9_amount * a9_portfolio_price,
 t1.a10_portfolio_value			= a10_amount * a10_portfolio_price,
 t1.p_value 						= a1_portfolio_value + a2_portfolio_value + a3_portfolio_value + a4_portfolio_value + a5_portfolio_value
 								+ a6_portfolio_value + a7_portfolio_value + a8_portfolio_value + a9_portfolio_value + a10_portfolio_value,
-t1.buy 							=	(SELECT 	IF(a1_amount > t2.prev_a1_amount, -t1.a1_portfolio_price * (t1.a1_amount - t2.prev_a1_amount),0)+
+t1.buy 							=	(SELECT IF(a1_amount > t2.prev_a1_amount, -t1.a1_portfolio_price * (t1.a1_amount - t2.prev_a1_amount),0)+
 											IF(a2_amount > t2.prev_a2_amount, -t1.a2_portfolio_price * (t1.a2_amount - t2.prev_a2_amount),0)+ 
 											IF(a3_amount > t2.prev_a3_amount, -t1.a3_portfolio_price * (t1.a3_amount - t2.prev_a3_amount),0)+
 											IF(a4_amount > t2.prev_a4_amount, -t1.a4_portfolio_price * (t1.a4_amount - t2.prev_a4_amount),0)+
@@ -2139,7 +2117,7 @@ t1.buy 							=	(SELECT 	IF(a1_amount > t2.prev_a1_amount, -t1.a1_portfolio_pric
                                             IF(a8_amount > t2.prev_a8_amount, -t1.a8_portfolio_price * (t1.a8_amount - t2.prev_a8_amount),0)+
                                             IF(a9_amount > t2.prev_a9_amount, -t1.a9_portfolio_price * (t1.a9_amount - t2.prev_a9_amount),0)+
                                             IF(a10_amount > t2.prev_a10_amount, -t1.a10_portfolio_price * (t1.a10_amount - t2.prev_a10_amount),0)),
-t1.sell						=	(SELECT 	IF(a1_amount < t2.prev_a1_amount, -t1.a1_portfolio_price * (t1.a1_amount - t2.prev_a1_amount),0) +
+t1.sell							=	(SELECT IF(a1_amount < t2.prev_a1_amount, -t1.a1_portfolio_price * (t1.a1_amount - t2.prev_a1_amount),0) +
 											IF(a2_amount < t2.prev_a2_amount, -t1.a2_portfolio_price * (t1.a2_amount - t2.prev_a2_amount),0)+ 
 											IF(a3_amount < t2.prev_a3_amount, -t1.a3_portfolio_price * (t1.a3_amount - t2.prev_a3_amount),0)+ 
 											IF(a4_amount < t2.prev_a4_amount, -t1.a4_portfolio_price * (t1.a4_amount - t2.prev_a4_amount),0)+ 
@@ -2161,11 +2139,9 @@ transaction_costs 			= 	-(IF(a1_amount_change != 0, 1, 0)
 								+ IF(a10_amount_change != 0, 1, 0)) * @portfolio_transaction_cost,  
 -- THE INTEREST IS BEING CALCULATED ON A DAILY BASIS instead of a monthly one for ease of programing. The rate is set as the RFR + 1%, which is a realistic rate for a serious brokerage firm. 
 interest					= 	IF(prev_acc_balance < 0, prev_acc_balance * (SELECT last_rate + @interest_augment 
-																				FROM econ_indicator_values 
-																				WHERE symbol = 'EUR-RFR' 
-                                                                                AND date = t1.date)
-                                                                                /100/365, 
-                                                                                0),
+																			   FROM econ_indicator_values 
+																			  WHERE symbol = 'EUR-RFR' 
+                                                                                AND date = t1.date) / 100 / 365, 0),
 t1.tot_change				=	t1.buy + t1.sell + t1.deposit + t1.withdrawl + t1.transaction_costs + t1.interest,
 t1.acc_balance				=	CASE
 								WHEN t1.date = @start_date THEN tot_change
@@ -2191,12 +2167,12 @@ WHERE t1.date = loop_date;
 END WHILE;
 
 INSERT INTO sim_temp
-	SELECT* 
-	FROM sim_looper
-    WHERE date != @max_date;
+	 SELECT * 
+	   FROM sim_looper
+      WHERE date != @max_date;
 
 DELETE
-FROM sim_looper;
+  FROM sim_looper;
 
 SET inner_counter = 1;
 SET outer_counter = outer_counter + 1;
@@ -2204,11 +2180,8 @@ SET outer_counter = outer_counter + 1;
 END WHILE;
 
 DELETE FROM sim_temp
-WHERE a1_amount IS NULL
-OR date > @end_date;
+	  WHERE a1_amount IS NULL
+		 OR date > @end_date;
 	
 END //
-
-
-
 
